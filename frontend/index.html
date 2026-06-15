@@ -3119,7 +3119,7 @@ function openAddCompanyModal() {
     <div class="fg"><label class="fl">ISIN <span class="req">*</span></label><input class="fc" id="cf-isin" placeholder="INE002A01018"></div>
     <div class="fg"><label class="fl">BSE Code</label><input class="fc" id="cf-bse" placeholder="500325" maxlength="10"></div>
     <div class="fg"><label class="fl">NSE Symbol</label><input class="fc" id="cf-nse" placeholder="RELIANCE" maxlength="20"></div>
-    <div class="fg"><label class="fl">Part Of (Group)</label><input class="fc" id="cf-partof" placeholder="e.g. Tata Group"></div>
+    <div class="fg"><label class="fl">Part Of (Group)</label><input class="fc" id="cf-partof" placeholder="e.g. NSE500"></div>
     <div class="fg"><label class="fl">Exchange</label><select class="fc" id="cf-exch"><option>NSE / BSE</option><option>NSE</option><option>BSE</option></select></div>
     <div class="fg"><label class="fl">Sector</label><select class="fc" id="cf-sector"><option value="">— Select —</option>${secOpts}</select></div>
     <div class="fg"><label class="fl">PAN</label><input class="fc" id="cf-pan" placeholder="AAACR5055K"></div>
@@ -3147,7 +3147,7 @@ function openEditCompanyModal(coId) {
     <div class="fg"><label class="fl">ISIN <span style="font-size:10px;color:var(--i3);font-weight:400">(cannot change)</span></label><input class="fc" id="cf-isin" value="${co.isin}" readonly style="background:var(--s2);color:var(--i3);cursor:not-allowed"></div>
     <div class="fg"><label class="fl">BSE Code</label><input class="fc" id="cf-bse" value="${co.bseCode}" maxlength="10"></div>
     <div class="fg"><label class="fl">NSE Symbol</label><input class="fc" id="cf-nse" value="${co.nseSymbol}" maxlength="20"></div>
-    <div class="fg"><label class="fl">Part Of (Group)</label><input class="fc" id="cf-partof" value="${co.partOf}" placeholder="e.g. Tata Group"></div>
+    <div class="fg"><label class="fl">Part Of (Group)</label><input class="fc" id="cf-partof" value="${co.partOf}" placeholder="e.g. NSE500"></div>
     <div class="fg"><label class="fl">Exchange</label><select class="fc" id="cf-exch"><option${co.exchange==='NSE / BSE'?' selected':''}>NSE / BSE</option><option${co.exchange==='NSE'?' selected':''}>NSE</option><option${co.exchange==='BSE'?' selected':''}>BSE</option></select></div>
     <div class="fg"><label class="fl">Sector</label><select class="fc" id="cf-sector"><option value="">— Select —</option>${secOpts}</select></div>
     <div class="fg"><label class="fl">PAN</label><input class="fc" id="cf-pan" value="${co.pan}"></div>
