@@ -30,6 +30,11 @@ router.get('/', auth, async (req, res) => {
       ${where}
     `, params);
 
+    const sortCols = { co_name: 'cm.co_name' };
+    const orderBy = sortCols[req.query.sort]
+      ? `${sortCols[req.query.sort]} ${req.query.dir==='desc'?'DESC':'ASC'}`
+      : 'cm.co_name ASC';
+
     const [rows] = await db.query(`
       SELECT cm.company_id, cm.co_name, cm.co_cin, cm.co_isin, cm.co_bse_code,
              cm.co_nse_symbol, cm.co_part_of, cm.co_pan, cm.co_roc,
@@ -38,7 +43,7 @@ router.get('/', auth, async (req, res) => {
       FROM ma_company cm
       LEFT JOIN ma_sector s ON s.sector_id = cm.sector_id
       ${where}
-      ORDER BY cm.co_name
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
 

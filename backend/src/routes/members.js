@@ -54,6 +54,10 @@ router.get('/', async (req, res) => {
     // ≤500 rows on THIS page (uses idx_mfr_mem_active_from), instead of materialising
     // a ROW_NUMBER() window over the entire ~150k-row relationship table on every
     // request — that previously cost ~1.8s on every member-list load.
+    const sortCols = { mem_name: 'mm.mem_name' };
+    const sortCol = sortCols[req.query.sort] || 'mm.mem_name';
+    const sortDir = req.query.dir === 'desc' ? 'DESC' : 'ASC';
+
     const [rows] = await db.query(`
       SELECT page.*, fm.fr_name AS current_firm_name, fm.fr_reg_no AS current_firm_reg
       FROM (
@@ -63,11 +67,11 @@ router.get('/', async (req, res) => {
            ORDER BY mfr.from_date DESC LIMIT 1) AS _cur_fr_reg_no
         FROM ma_member mm
         ${where}
-        ORDER BY mm.mem_name
+        ORDER BY ${sortCol} ${sortDir}
         LIMIT ? OFFSET ?
       ) page
       LEFT JOIN ma_firm fm ON fm.fr_reg_no = page._cur_fr_reg_no
-      ORDER BY page.mem_name
+      ORDER BY page.mem_name ${sortDir}
     `, [...params, limit, offset]);
     rows.forEach(r => delete r._cur_fr_reg_no);
     res.json({ data: rows, total, page, totalPages: Math.ceil(total / limit), limit });

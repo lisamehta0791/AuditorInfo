@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -290,6 +290,24 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 .toast.s{border-left-color:var(--green)}.toast.s svg{color:var(--green)}
 .toast.e{border-left-color:var(--red)}.toast.e svg{color:var(--red)}
 .sh-sort{cursor:pointer;user-select:none;white-space:nowrap}.sh-sort:hover{color:var(--accent)}.sh-arrow{font-size:10px;margin-left:3px;color:var(--i3)}
+/* DATE PICKER */
+.dp-display{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none}
+.dp-display.dp-dis{cursor:not-allowed;opacity:.7;pointer-events:none}
+.dp-popup{position:fixed;z-index:10001;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);width:256px;padding:10px;font-size:13px}
+.dp-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.dp-nb{background:none;border:1px solid var(--b2);border-radius:4px;cursor:pointer;padding:1px 7px;font-size:14px;color:var(--ink);line-height:1.6}
+.dp-nb:hover{background:var(--s2)}
+.dp-mth{font-size:12.5px;font-weight:600;flex:1;text-align:center;padding:0 4px}
+.dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.dp-dh{text-align:center;font-size:10px;font-weight:600;color:var(--i3);padding:2px 0}
+.dp-dc{text-align:center;font-size:12.5px;padding:5px 0;border-radius:4px;cursor:pointer}
+.dp-dc:hover:not(.dp-empty){background:var(--s2)}
+.dp-dc.dp-sel{background:var(--accent);color:#fff}
+.dp-dc.dp-today:not(.dp-sel){font-weight:700;color:var(--accent)}
+.dp-dc.dp-empty{pointer-events:none}
+.dp-foot{margin-top:8px;display:flex;justify-content:flex-end;gap:6px}
+.dp-foot button{font-size:11px;padding:2px 9px;background:none;border:1px solid var(--b2);border-radius:4px;cursor:pointer;color:var(--i2)}
+.dp-foot button:hover{background:var(--s2)}
 .toast.i{border-left-color:var(--accent)}.toast.i svg{color:var(--accent)}
 .toast.w{border-left-color:var(--amber)}.toast.w svg{color:var(--amber)}
 @keyframes ti{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
@@ -353,6 +371,9 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>Audit Records
       <span class="sb-badge" id="sb-pending">0</span>
     </button>
+    <button class="sb-item" onclick="nav('signing-history')">
+      <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>Signing History
+    </button>
     <button class="sb-item" onclick="nav('dq')">
       <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Data Quality
       <span class="sb-warn" id="sb-issues">0</span>
@@ -368,18 +389,8 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <button class="sb-item" onclick="nav('members')">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>CA Members
     </button>
-    <button class="sb-item" onclick="nav('signing-history')">
-      <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>Signing History
-    </button>
     <button class="sb-item" onclick="nav('partner-records')">
       <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Partner Records
-    </button>
-    <div class="sb-sec">Actions</div>
-    <button class="sb-item" onclick="openApptModal(null,null,'Annual Standalone')">
-      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Standalone Appt
-    </button>
-    <button class="sb-item" onclick="openApptModal(null,null,'Annual Consolidated')">
-      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Consolidated Appt
     </button>
     <button class="sb-item" onclick="openAddPartnerRecordModal()">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Partner
@@ -526,12 +537,12 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <div class="tc-h">
       <div class="tc-t">Company Master <span class="tc-cnt" id="co-cnt"></span></div>
       <div class="tc-f">
-        <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Name, CIN, ISIN, BSE…" id="co-q" oninput="coSearch();toggleClear('co-q','co-q-clear')"><button class="srch-clear" id="co-q-clear" title="Clear" onclick="clearSearch('co-q','co-q-clear',coSearch)">✕</button></div>
+        <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Name, CIN, ISIN, BSE…" id="co-q" oninput="dbSearch('co-q',coSearch);toggleClear('co-q','co-q-clear')"><button class="srch-clear" id="co-q-clear" title="Clear" onclick="clearSearch('co-q','co-q-clear',coSearch)">✕</button></div>
         <div id="co-filter-wrap"></div>
       </div>
     </div>
     <table>
-      <thead><tr><th>Company</th><th>ISIN</th><th>BSE Code</th><th>NSE Symbol</th><th>Part Of</th><th>Exchange</th><th>Sector</th><th>Current FY Status</th><th>DQ</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th class="sh-sort" data-col="co_name" onclick="coSort('co_name')">Company <span class="sh-arrow" id="coa-co_name"> ▲</span></th><th>ISIN</th><th>BSE Code</th><th>NSE Symbol</th><th>Part Of</th><th>Exchange</th><th>Sector</th><th>Current FY Status</th><th>DQ</th><th>Status</th><th></th></tr></thead>
       <tbody id="co-tbody"></tbody>
     </table>
     <div id="co-pager"></div>
@@ -549,18 +560,19 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <div class="tc-h">
       <div class="tc-t">Register <span class="tc-cnt" id="rec-cnt"></span></div>
       <div class="tc-f">
-        <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Company or firm…" id="rec-q" oninput="_recPage=1;renderRecords();toggleClear('rec-q','rec-q-clear')"><button class="srch-clear" id="rec-q-clear" title="Clear" onclick="clearSearch('rec-q','rec-q-clear',renderRecords)">✕</button></div>
+        <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Company or firm…" id="rec-q" oninput="dbSearch('rec-q',()=>{_recPage=1;renderRecords();});toggleClear('rec-q','rec-q-clear')"><button class="srch-clear" id="rec-q-clear" title="Clear" onclick="clearSearch('rec-q','rec-q-clear',renderRecords)">✕</button></div>
         <div id="rec-filter-wrap"></div>
       </div>
     </div>
     <table>
       <thead>
         <tr>
-          <th class="sh-sort" data-col="coName" onclick="recSort('coName')">Company <span class="sh-arrow" id="reca-coName"></span></th>
+          <th class="sh-sort" data-col="coName" onclick="recSort('coName')">Company <span class="sh-arrow" id="reca-coName">↕</span></th>
           <th>FY</th>
           <th>Report Type</th>
-          <th class="sh-sort" data-col="firmName" onclick="recSort('firmName')">CA Firm <span class="sh-arrow" id="reca-firmName"></span></th>
-          <th class="sh-sort" data-col="partnerName" onclick="recSort('partnerName')">Partner <span class="sh-arrow" id="reca-partnerName"></span></th>
+          <th class="sh-sort" data-col="firmName" onclick="recSort('firmName')">CA Firm <span class="sh-arrow" id="reca-firmName">↕</span></th>
+          <th class="sh-sort" data-col="partnerName" onclick="recSort('partnerName')">Partner <span class="sh-arrow" id="reca-partnerName">↕</span></th>
+          <th>Report End Date</th>
           <th>Signing Date</th>
           <th>DQ</th>
           <th>Status</th>
@@ -607,11 +619,11 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
   <div class="tc">
     <div class="tc-h">
       <div class="tc-t">Firm Master <span class="tc-cnt" id="firm-cnt"></span></div>
-      <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Name or reg no…" id="firm-q" oninput="firmSearch();toggleClear('firm-q','firm-q-clear')"><button class="srch-clear" id="firm-q-clear" title="Clear" onclick="clearSearch('firm-q','firm-q-clear',firmSearch)">✕</button></div>
+      <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Name or reg no…" id="firm-q" oninput="dbSearch('firm-q',firmSearch);toggleClear('firm-q','firm-q-clear')"><button class="srch-clear" id="firm-q-clear" title="Clear" onclick="clearSearch('firm-q','firm-q-clear',firmSearch)">✕</button></div>
       <div id="firm-filter-wrap"></div>
     </div>
     <table>
-      <thead><tr><th>Firm</th><th>Reg No.</th><th>Region</th><th>Firm Type</th><th>Partners</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th class="sh-sort" data-col="fr_name" onclick="firmSort('fr_name')">Firm <span class="sh-arrow" id="firma-fr_name"> ▲</span></th><th>Reg No.</th><th>Region</th><th>Firm Type</th><th>Partners</th><th>Status</th><th></th></tr></thead>
       <tbody id="firm-tbody"></tbody>
     </table>
     <div id="firm-pager"></div>
@@ -632,12 +644,12 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <div class="tc-h">
       <div class="tc-t">Member Master <span class="tc-cnt" id="mem-cnt"></span></div>
       <div class="tc-f">
-        <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Name or MRN…" id="mem-q" oninput="memberSearch();toggleClear('mem-q','mem-q-clear')"><button class="srch-clear" id="mem-q-clear" title="Clear" onclick="clearSearch('mem-q','mem-q-clear',memberSearch)">✕</button></div>
+        <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input placeholder="Name or MRN…" id="mem-q" oninput="dbSearch('mem-q',memberSearch);toggleClear('mem-q','mem-q-clear')"><button class="srch-clear" id="mem-q-clear" title="Clear" onclick="clearSearch('mem-q','mem-q-clear',memberSearch)">✕</button></div>
         <div id="mem-filter-wrap"></div>
       </div>
     </div>
     <table>
-      <thead><tr><th>Member</th><th>MRN</th><th>Qualification &amp; Year (ACA / FCA)</th><th>Gender</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th class="sh-sort" data-col="mem_name" onclick="memberSort('mem_name')">Member <span class="sh-arrow" id="mema-mem_name"> ▲</span></th><th>MRN</th><th>Qualification &amp; Year (ACA / FCA)</th><th>Gender</th><th>Status</th><th></th></tr></thead>
       <tbody id="mem-tbody"></tbody>
     </table>
     <div id="mem-pager"></div>
@@ -662,14 +674,14 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <table id="sh-table">
       <thead>
         <tr>
-          <th class="sh-sort" data-col="firmName" onclick="shSort('firmName')">CA Firm <span class="sh-arrow" id="sha-firmName"></span></th>
+          <th class="sh-sort" data-col="firmName" onclick="shSort('firmName')">CA Firm <span class="sh-arrow" id="sha-firmName">↕</span></th>
           <th>Reg No.</th>
-          <th class="sh-sort" data-col="partnerName" onclick="shSort('partnerName')">Partner <span class="sh-arrow" id="sha-partnerName"></span></th>
+          <th class="sh-sort" data-col="partnerName" onclick="shSort('partnerName')">Partner <span class="sh-arrow" id="sha-partnerName">↕</span></th>
           <th>MRN</th>
-          <th class="sh-sort" data-col="coName" onclick="shSort('coName')">Company <span class="sh-arrow" id="sha-coName"></span></th>
+          <th class="sh-sort" data-col="coName" onclick="shSort('coName')">Company <span class="sh-arrow" id="sha-coName">↕</span></th>
           <th>FY</th>
           <th>Report Type</th>
-          <th class="sh-sort" data-col="date" onclick="shSort('date')">Signing Date <span class="sh-arrow" id="sha-date"></span></th>
+          <th class="sh-sort" data-col="date" onclick="shSort('date')">Signing Date <span class="sh-arrow" id="sha-date">↕</span></th>
           <th>Status</th>
         </tr>
       </thead>
@@ -698,9 +710,9 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <table id="pr-table">
       <thead>
         <tr>
-          <th class="sh-sort" data-col="fr_name" onclick="prSort('fr_name')">CA Firm <span class="sh-arrow" id="pra-fr_name"></span></th>
+          <th class="sh-sort" data-col="fr_name" onclick="prSort('fr_name')">CA Firm <span class="sh-arrow" id="pra-fr_name">↕</span></th>
           <th>Reg No.</th>
-          <th class="sh-sort" data-col="mem_name" onclick="prSort('mem_name')">Partner <span class="sh-arrow" id="pra-mem_name"></span></th>
+          <th class="sh-sort" data-col="mem_name" onclick="prSort('mem_name')">Partner <span class="sh-arrow" id="pra-mem_name">↕</span></th>
           <th>MRN</th>
           <th>Designation</th>
           <th>Status</th>
@@ -763,12 +775,12 @@ function qualYears(acaYear, fcaYear){
   if (a && f) return a + '/' + f;
   return a || f || '';
 }
-const fd     = d  => { if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); };
+const fd     = d  => { if(!d||d==='—') return '—'; const s=String(d).slice(0,10); const dt=new Date(s+'T00:00:00'); return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); };
 const coAppts   = (coId,fy) => APPTS.filter(a=>a.coId===coId&&a.fy===fy);
 const fAppts    = (fId,fy)  => APPTS.filter(a=>a.firmId===fId&&(fy?a.fy===fy:true));
 const mAppts    = (mId,fy)  => APPTS.filter(a=>a.memberId===mId&&(fy?a.fy===fy:true));
-const coStatus  = (coId,fy) => { const a=coAppts(coId,fy); if(!a.length) return 'Inactive'; if(a.some(x=>x.status==='Active')) return 'Active'; return 'Inactive'; };
-const bdg       = (st,label)=> { const m={Active:'ok',Inactive:'inactive'}; return `<span class="bdg ${m[st]||'info'}">${label||st}</span>`; };
+const coStatus  = (coId,fy) => { const a=coAppts(coId,fy); if(!a.length) return 'None'; if(a.some(x=>x.status==='Active')) return 'Active'; return 'None'; };
+const bdg       = (st,label)=> { const m={Active:'ok',Removed:'inactive',Inactive:'inactive'}; return `<span class="bdg ${m[st]||'info'}">${label||st}</span>`; };
 const exchBdg   = ex => ex.includes('/')?'<span class="bdg nse" style="background:var(--gbg);color:var(--green);border-color:var(--gbd)">NSE/BSE</span>':ex==='NSE'?'<span class="bdg nse">NSE</span>':'<span class="bdg bse">BSE</span>';
 
 /* ══════════ FETCH HELPERS ══════════ */
@@ -983,6 +995,7 @@ async function loadCompaniesPage(page, search) {
   companiesPage = page;
   const params = new URLSearchParams({ page: companiesPage, limit: PAGE_SIZE });
   if (companiesSearch) params.set('search', companiesSearch);
+  if (_coSortCol) { params.set('sort', _coSortCol); params.set('dir', _coSortDir===1?'asc':'desc'); }
   const companyVals  = fpValues('companies','company');  if (companyVals.length)  params.set('company_id', companyVals.join(','));
   const sectorVals   = fpValues('companies','sector');   if (sectorVals.length)   params.set('sector', sectorVals.join(','));
   const exchangeVals = fpValues('companies','exchange'); if (exchangeVals.length) params.set('exchange', exchangeVals.join(','));
@@ -999,6 +1012,7 @@ async function loadFirmsPage(page, search) {
   firmsPage = page;
   const params = new URLSearchParams({ page: firmsPage, limit: PAGE_SIZE });
   if (firmsSearch) params.set('search', firmsSearch);
+  if (_firmSortCol) { params.set('sort', _firmSortCol); params.set('dir', _firmSortDir===1?'asc':'desc'); }
   const firmVals   = fpValues('firms','firm');     if (firmVals.length)   params.set('fr_reg_no', firmVals.join(','));
   const statusVals = fpValues('firms','status');   if (statusVals.length) params.set('status', statusVals.join(','));
   const regionVals = fpValues('firms','region');   if (regionVals.length) params.set('region', regionVals.join(','));
@@ -1021,6 +1035,7 @@ async function loadMembersPage(page, search) {
   membersPage = page;
   const params = new URLSearchParams({ page: membersPage, limit: PAGE_SIZE });
   if (membersSearch) params.set('search', membersSearch);
+  if (_memSortCol) { params.set('sort', _memSortCol); params.set('dir', _memSortDir===1?'asc':'desc'); }
   const memberVals = fpValues('members','member'); if (memberVals.length) params.set('mem_no', memberVals.join(','));
   const qualVals    = fpValues('members','qualification'); if (qualVals.length) params.set('qualification', qualVals.join(','));
   const statusVals = fpValues('members','status'); if (statusVals.length) params.set('status', statusVals.join(','));
@@ -1143,7 +1158,7 @@ function nav(screen,opts={}){
   if(screen==='company-detail') _detailCoId=opts.coId||_detailCoId;
   else if(screen==='firm-detail') _detailFirmId=opts.firmId||_detailFirmId;
   else if(screen==='member-detail') _detailMemberId=opts.memberId||_detailMemberId;
-  const nm={dashboard:0,analytics:1,companies:2,records:3,dq:4,alerts:5,firms:6,members:7,'signing-history':8,'partner-records':9};
+  const nm={dashboard:0,analytics:1,companies:2,records:3,'signing-history':4,dq:5,alerts:6,firms:7,members:8,'partner-records':9};
   document.querySelectorAll('.sb-item')[nm[screen]!==undefined?nm[screen]:0]?.classList.add('active');
   setBc(screen,opts);
   const rs={
@@ -1523,8 +1538,6 @@ async function renderCODetail(coId){
       <div class="ph-r">
         <button class="btn btn-se btn-sm" onclick="nav('companies')">← Back</button>
         <button class="btn btn-se btn-sm" onclick="openEditCompanyModal('${coId}')">Edit Details</button>
-        <button class="btn btn-pr btn-sm" onclick="openApptModal('${coId}',null,'Annual Standalone')">+ Standalone Appt</button>
-        <button class="btn btn-se btn-sm" onclick="openApptModal('${coId}',null,'Annual Consolidated')">+ Consolidated Appt</button>
       </div>
     </div>
     <div class="mini-stats">
@@ -1538,37 +1551,41 @@ async function renderCODetail(coId){
   all.forEach(a=>{(byFY[a.fy_label]=byFY[a.fy_label]||[]).push(a);});
   const fyKeys=Object.keys(byFY).sort((a,b)=>b.localeCompare(a));
   h+=`<div class="tc" style="margin-bottom:18px">
-    <div class="tc-h"><div class="tc-t">Auditor History</div>
+    <div class="tc-h"><div class="tc-t">Audit History</div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-pr btn-sm" onclick="openApptModal('${coId}',null,'Annual Standalone')">+ Standalone</button>
         <button class="btn btn-se btn-sm" onclick="openApptModal('${coId}',null,'Annual Consolidated')">+ Consolidated</button>
       </div>
     </div>
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);padding:0 16px">
+      <button id="co-tab-sl" onclick="coSwitchAuditTab('sl')" style="padding:8px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--accent);color:var(--accent);margin-bottom:-2px">Standalone</button>
+      <button id="co-tab-cl" onclick="coSwitchAuditTab('cl')" style="padding:8px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:var(--i3);margin-bottom:-2px">Consolidated</button>
+    </div>
+    <div id="co-audit-sl">
     <table style="width:100%;border-collapse:collapse">
       <thead><tr style="background:var(--s1);border-bottom:2px solid var(--border)">
         <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">FY</th>
         <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">CA Firm</th>
         <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Signing Partner</th>
-        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Report Type</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Report End Date</th>
         <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Signing Date</th>
         <th></th>
       </tr></thead>
       <tbody>${fyKeys.map(fyYear=>{
-        const rows=byFY[fyYear];
-        if(!rows||rows.length===0){return`<tr style="border-bottom:1px solid var(--border)">
+        const rows=(byFY[fyYear]||[]).filter(x=>(x.report_type||'').includes('Standalone'));
+        if(!rows.length){return`<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:10px 14px;font-weight:600;font-size:13px;border-right:2px solid var(--border)">${fyYear}</td>
-          <td colspan="4" style="padding:10px 14px;font-size:13px;color:var(--i3)">No appointment recorded</td>
-          <td><button class="btn btn-se btn-xs" onclick="openApptModal('${coId}','${fyYear}','Annual Standalone')">+SL</button>&nbsp;<button class="btn btn-gh btn-xs" onclick="openApptModal('${coId}','${fyYear}','Annual Consolidated')">+CL</button></td>
+          <td colspan="4" style="padding:10px 14px;font-size:13px;color:var(--i3)">No standalone appointment recorded</td>
+          <td><button class="btn btn-se btn-xs" onclick="openApptModal('${coId}','${fyYear}','Annual Standalone')">+ Add</button></td>
         </tr>`;}
         return rows.map((x,xi)=>{
-          const isInactive = x.record_status === 'Inactive';
-          const rt=x.report_type?x.report_type.replace('Annual Standalone','Annual \u2014 Standalone').replace('Annual Consolidated','Annual \u2014 Consolidated'):'—';
           const fName=x.fr_name||'—';
           const fReg=x.fr_reg_no||'';
           const mName=x.mem_name||'—';
           const mMrn=x.mem_no||'';
 
-          return`<tr style="border-bottom:1px solid var(--border);${isInactive?'opacity:0.45;':''}">
+          const endDate=x.report_end_date?fd(x.report_end_date.slice(0,10)):'—';
+          return`<tr style="border-bottom:1px solid var(--border)">
             ${xi===0?`<td style="padding:10px 14px;font-weight:600;font-size:13px;border-right:2px solid var(--border);vertical-align:top" rowspan="${rows.length}">${fyYear}</td>`:''}
             <td style="padding:10px 14px">
               <div style="font-weight:500;cursor:pointer;color:var(--accent);font-size:13px" onclick="nav('firm-detail',{firmId:'${x.fr_reg_no||x.firm_id}'})">${fName}</div>
@@ -1578,8 +1595,8 @@ async function renderCODetail(coId){
               <div style="font-weight:500;cursor:pointer;color:var(--accent);font-size:13px" onclick="nav('member-detail',{memberId:'${x.mem_no||x.member_id}'})">${mName}</div>
               ${mMrn?`<div style="font-size:11px;font-family:var(--mono);color:var(--i3);margin-top:2px">${mMrn}</div>`:''}
             </td>
-            <td style="padding:10px 14px;font-size:12px;color:var(--i2)">${rt}</td>
-            <td style="padding:10px 14px;font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'<span style="color:var(--i4)">—</span>'}</td>
+            <td style="padding:10px 14px;font-size:12.5px">${endDate}</td>
+            <td style="padding:10px 14px;font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'—'}</td>
             <td style="padding:10px 14px"><div class="row-acts">
               <button class="btn btn-gh btn-xs" onclick="openEditAppt('${x.audit_rel_id}')">Edit</button>
               <button class="btn btn-gh btn-xs" onclick="openCloneApptModal('${x.audit_rel_id}')">Clone</button>
@@ -1587,6 +1604,50 @@ async function renderCODetail(coId){
           </tr>`;}).join('');
       }).join('')}</tbody>
     </table>
+    </div>
+    <div id="co-audit-cl" style="display:none">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--s1);border-bottom:2px solid var(--border)">
+        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">FY</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">CA Firm</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Signing Partner</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Report End Date</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase">Signing Date</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${fyKeys.map(fyYear=>{
+        const clRows=(byFY[fyYear]||[]).filter(x=>(x.report_type||'').includes('Consolidated'));
+        if(!clRows.length){return`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:10px 14px;font-weight:600;font-size:13px;border-right:2px solid var(--border)">${fyYear}</td>
+          <td colspan="4" style="padding:10px 14px;font-size:13px;color:var(--i3)">No consolidated appointment recorded</td>
+          <td><button class="btn btn-se btn-xs" onclick="openApptModal('${coId}','${fyYear}','Annual Consolidated')">+ Add</button></td>
+        </tr>`;}
+        return clRows.map((x,xi)=>{
+          const fName=x.fr_name||'—';
+          const fReg=x.fr_reg_no||'';
+          const mName=x.mem_name||'—';
+          const mMrn=x.mem_no||'';
+          const endDate=x.report_end_date?fd(x.report_end_date.slice(0,10)):'—';
+          return`<tr style="border-bottom:1px solid var(--border)">
+            ${xi===0?`<td style="padding:10px 14px;font-weight:600;font-size:13px;border-right:2px solid var(--border);vertical-align:top" rowspan="${clRows.length}">${fyYear}</td>`:''}
+            <td style="padding:10px 14px">
+              <div style="font-weight:500;cursor:pointer;color:var(--accent);font-size:13px" onclick="nav('firm-detail',{firmId:'${x.fr_reg_no||x.firm_id}'})">${fName}</div>
+              ${fReg?`<div style="font-size:11px;font-family:var(--mono);color:var(--i3);margin-top:2px">${fReg}</div>`:''}
+            </td>
+            <td style="padding:10px 14px">
+              <div style="font-weight:500;cursor:pointer;color:var(--accent);font-size:13px" onclick="nav('member-detail',{memberId:'${x.mem_no||x.member_id}'})">${mName}</div>
+              ${mMrn?`<div style="font-size:11px;font-family:var(--mono);color:var(--i3);margin-top:2px">${mMrn}</div>`:''}
+            </td>
+            <td style="padding:10px 14px;font-size:12.5px">${endDate}</td>
+            <td style="padding:10px 14px;font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'—'}</td>
+            <td style="padding:10px 14px"><div class="row-acts">
+              <button class="btn btn-gh btn-xs" onclick="openEditAppt('${x.audit_rel_id}')">Edit</button>
+              <button class="btn btn-gh btn-xs" onclick="openCloneApptModal('${x.audit_rel_id}')">Clone</button>
+            </div></td>
+          </tr>`;}).join('');
+      }).join('')}</tbody>
+    </table>
+    </div>
   </div>`;
   coEl.innerHTML=h;
 }
@@ -1670,7 +1731,7 @@ function renderFilterPanel(containerId, pageKey, fields, onApply){
       <button class="btn btn-se btn-sm" onclick="fpToggle('${pageKey}')" id="fp-btn-${pageKey}">
         &#9662; Filters${count ? ` <span class="fp-badge">${count}</span>` : ''}
       </button>
-      <div class="fp-panel" id="fp-panel-${pageKey}" style="display:${wasOpen?'block':'none'};position:absolute;top:100%;right:0;z-index:400;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);margin-top:6px;width:640px;max-width:92vw;padding:14px">
+      <div class="fp-panel" id="fp-panel-${pageKey}" style="display:${wasOpen?'block':'none'};position:fixed;z-index:9000;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);margin-top:6px;width:640px;max-width:92vw;padding:14px">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;max-height:380px;overflow-y:auto">
           ${fields.map(f => fpRenderField(pageKey, f)).join('')}
         </div>
@@ -1794,7 +1855,18 @@ function fpToggle(pageKey){
   if (!panel) return;
   const open = panel.style.display !== 'none';
   document.querySelectorAll('.fp-panel').forEach(p => p.style.display='none');
-  panel.style.display = open ? 'none' : 'block';
+  if (!open) {
+    const btn = document.getElementById('fp-btn-'+pageKey);
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      panel.style.top = (r.bottom + 6) + 'px';
+      // Align right edge of panel with right edge of button
+      const right = window.innerWidth - r.right;
+      panel.style.right = Math.max(6, right) + 'px';
+      panel.style.left = '';
+    }
+    panel.style.display = 'block';
+  }
 }
 function fpApply(pageKey){
   document.getElementById('fp-panel-'+pageKey).style.display='none';
@@ -1869,21 +1941,47 @@ function recFilterFields(){
     {key:'report_type', label:'Report Type', type:'checkbox', options:[{value:'Annual Standalone',label:'Standalone'},{value:'Annual Consolidated',label:'Consolidated'}]},
     {key:'opinion', label:'Opinion', type:'checkbox', options:['Unmodified','Qualified','Adverse','Disclaimer','Emphasis of Matter'].map(v=>({value:v,label:v}))},
     {key:'rotation_status', label:'Rotation', type:'checkbox', options:[{value:'OK',label:'OK'},{value:'Approaching',label:'Approaching'},{value:'Due',label:'Due'},{value:'Overdue',label:'Overdue'}]},
-    {key:'status', label:'Status', type:'checkbox', options:[{value:'Active',label:'Active'},{value:'Inactive',label:'Inactive'}]},
+    {key:'status', label:'Status', type:'checkbox', options:[{value:'Active',label:'Active'},{value:'Removed',label:'Removed'}]},
   ];
 }
 function recRenderFilterPanel(){
   renderFilterPanel('rec-filter-wrap', 'records', recFilterFields(), ()=>{ _recPage=1; renderRecords(); });
 }
 function recSort(col){
+  document.querySelectorAll('[id^="reca-"]').forEach(el=>el.textContent='↕');
   if(_recSortCol===col) _recSortDir*=-1; else { _recSortCol=col; _recSortDir=1; }
+  const arr=document.getElementById('reca-'+col); if(arr) arr.textContent=_recSortDir===1?' ▲':' ▼';
   _recPage=1; renderRecords();
+}
+
+let _coSortCol='co_name',_coSortDir=1;
+function coSort(col){
+  document.querySelectorAll('[id^="coa-"]').forEach(el=>el.textContent='↕');
+  if(_coSortCol===col) _coSortDir*=-1; else { _coSortCol=col; _coSortDir=1; }
+  const arr=document.getElementById('coa-'+col); if(arr) arr.textContent=_coSortDir===1?' ▲':' ▼';
+  loadCompaniesPage(1).then(renderCompanies);
+}
+
+let _firmSortCol='fr_name',_firmSortDir=1;
+function firmSort(col){
+  document.querySelectorAll('[id^="firma-"]').forEach(el=>el.textContent='↕');
+  if(_firmSortCol===col) _firmSortDir*=-1; else { _firmSortCol=col; _firmSortDir=1; }
+  const arr=document.getElementById('firma-'+col); if(arr) arr.textContent=_firmSortDir===1?' ▲':' ▼';
+  loadFirmsPage(1).then(renderFirms);
+}
+
+let _memSortCol='mem_name',_memSortDir=1;
+function memberSort(col){
+  document.querySelectorAll('[id^="mema-"]').forEach(el=>el.textContent='↕');
+  if(_memSortCol===col) _memSortDir*=-1; else { _memSortCol=col; _memSortDir=1; }
+  const arr=document.getElementById('mema-'+col); if(arr) arr.textContent=_memSortDir===1?' ▲':' ▼';
+  loadMembersPage(1).then(renderMembers);
 }
 
 async function renderRecords(){
   const q=(document.getElementById('rec-q')?.value||'').trim();
   const tbody=document.getElementById('rec-tbody');
-  if(tbody) tbody.innerHTML='<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--i3)">Loading…</td></tr>';
+  if(tbody) tbody.innerHTML='<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--i3)">Loading…</td></tr>';
   recRenderFilterPanel();
 
   const params=new URLSearchParams({page:_recPage,limit:PAGE_SIZE});
@@ -1901,14 +1999,14 @@ async function renderRecords(){
   if(_recSortCol && sortMap[_recSortCol]){ params.set('sort',sortMap[_recSortCol]); params.set('dir',_recSortDir===1?'asc':'desc'); }
 
   const res=await api('/appointments?'+params);
-  if(!res){ if(tbody) tbody.innerHTML='<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--i3)">Error loading records</td></tr>'; return; }
+  if(!res){ if(tbody) tbody.innerHTML='<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--i3)">Error loading records</td></tr>'; return; }
 
   let rows=res.data||res;
   _recTotal=res.total||rows.length;
   _recTotalPages=res.totalPages||1;
 
   document.getElementById('rec-cnt').textContent=`(${_recTotal})`;
-  document.querySelectorAll('#s-records .sh-arrow').forEach(el=>el.textContent='');
+  document.querySelectorAll('#s-records .sh-arrow').forEach(el=>el.textContent='↕');
   const arrowEl=document.getElementById('reca-'+_recSortCol);
   if(arrowEl) arrowEl.textContent=_recSortDir===1?' ▲':' ▼';
   // Also refresh APPTS for local computations
@@ -1937,6 +2035,7 @@ async function renderRecords(){
         <div style="font-size:13px;color:var(--accent)">${mName}</div>
         ${mMrn?`<div class="mono" style="font-size:11px;color:var(--i3);margin-top:1px">${mMrn}</div>`:''}
       </td>
+      <td style="font-size:12.5px">${x.report_end_date?fd(x.report_end_date.slice(0,10)):'—'}</td>
       <td style="font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'—'}</td>
       <td>${dqCell}</td>
       <td>${bdg(x.record_status)}</td>
@@ -1945,7 +2044,7 @@ async function renderRecords(){
         <button class="btn btn-gh btn-xs" onclick="event.stopPropagation();openCloneApptModal('${x.audit_rel_id}')">Clone</button>
       </div></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="9" style="padding:48px;text-align:center;color:var(--i3)">No records found</td></tr>`;
+  }).join('')||`<tr><td colspan="10" style="padding:48px;text-align:center;color:var(--i3)">No records found</td></tr>`;
 
   renderPager('rec-pager',_recPage,_recTotalPages,_recTotal,async(p)=>{_recPage=p;await renderRecords();});
 }
@@ -1982,15 +2081,15 @@ async function openCloneApptModal(apptId) {
     if(rtHid) rtHid.value = rt;
 
     // Pre-fill fee and date fields (carry over from original)
-    if(document.getElementById('mf-report-end'))   document.getElementById('mf-report-end').value   = appt.report_end_date||'';
-    if(document.getElementById('mf-report-start')) document.getElementById('mf-report-start').value = appt.report_start_date||'';
+    dpSetValue('mf-report-end', appt.report_end_date||'');
+    dpSetValue('mf-report-start', appt.report_start_date||'');
     if(document.getElementById('mf-audit-fee'))    document.getElementById('mf-audit-fee').value    = appt.audit_fee||'';
     if(document.getElementById('mf-tax-fee'))      document.getElementById('mf-tax-fee').value      = appt.tax_audit_fee||'';
     if(document.getElementById('mf-other-fee'))    document.getElementById('mf-other-fee').value    = appt.other_capacity_fee||'';
     if(document.getElementById('mf-cert-fee'))     document.getElementById('mf-cert-fee').value     = appt.certification_fee||'';
     if(document.getElementById('mf-remarks'))      document.getElementById('mf-remarks').value      = appt.remarks||'';
     // Signing date intentionally left blank — new appointment, new date
-    if(document.getElementById('mf-date'))         document.getElementById('mf-date').value         = '';
+    dpSetValue('mf-date','');
 
     // Pre-fill CA Firm and enable+fill Signing Partner
     const blk = document.getElementById('ab-0');
@@ -1998,9 +2097,9 @@ async function openCloneApptModal(apptId) {
       const fReg = appt.firmReg || appt.fr_reg_no || appt.firmId || '';
       const fName = appt.firmName || appt.fr_name || '';
       blk.querySelector('.ab-firm-hid').value = appt.firmId;
-      blk.querySelector('.ab-firm-q').value   = fReg + (fName?' — '+fName:'');
+      blk.querySelector('.ab-firm-q').value   = fName || fReg;
       const fHint = blk.querySelector('.ab-firm-hint');
-      if(fHint){ fHint.textContent = fName ? '✓ '+fName : '✓ Reg: '+fReg; fHint.className='fhint ok'; }
+      if(fHint){ fHint.textContent = fReg ? 'Reg: '+fReg : ''; fHint.className='fhint ok'; }
       // Enable partner input then populate
       const mq = blk.querySelector('.ab-member-q');
       if(mq){ mq.disabled=false; mq.placeholder='Type MRN or partner name…'; }
@@ -2490,11 +2589,11 @@ async function _openEditApptWithData(id,a){
     // rtype is stored as hidden field — update its value
     const rtHid=document.getElementById('mf-rtype');
     if(rtHid) rtHid.value=normaliseRtypeUI(a.rtype||'');
-    document.getElementById('mf-date').value=a.date||'';
+    dpSetValue('mf-date',a.date||'');
     document.getElementById('mf-remarks').value=a.remarks||'';
     // New fields
-    if(document.getElementById('mf-report-end'))   document.getElementById('mf-report-end').value=a.report_end_date?a.report_end_date.slice(0,10):'';
-    if(document.getElementById('mf-report-start')) document.getElementById('mf-report-start').value=a.report_start_date?a.report_start_date.slice(0,10):'';
+    dpSetValue('mf-report-end',a.report_end_date?a.report_end_date.slice(0,10):'');
+    dpSetValue('mf-report-start',a.report_start_date?a.report_start_date.slice(0,10):'');
     if(document.getElementById('mf-audit-fee'))    document.getElementById('mf-audit-fee').value=a.audit_fee||'';
     if(document.getElementById('mf-tax-fee'))      document.getElementById('mf-tax-fee').value=a.tax_audit_fee||'';
     if(document.getElementById('mf-other-fee'))    document.getElementById('mf-other-fee').value=a.other_capacity_fee||'';
@@ -2513,7 +2612,7 @@ async function _openEditApptWithData(id,a){
         // Update status dropdown of first block
         const sel=container.querySelector('.ab-status-sel');
         if(sel) sel.value = initSt;
-        if(initSt==='Inactive') container.querySelector('.ab-block').style.opacity='0.55';
+        if(initSt==='Removed') container.querySelector('.ab-block').style.opacity='0.45';
       }
       await _populateAuditorBlock(i, mapped);
     }
@@ -2529,9 +2628,9 @@ async function _populateAuditorBlock(idx, mapped){
   blk.querySelector('.ab-firm-hid').value=mapped.firmId;
   const seqHid=blk.querySelector('.ab-seq-hid');
   if(seqHid) seqHid.value=mapped.seq_no||mapped.seqNo||'';
-  blk.querySelector('.ab-firm-q').value=fReg+(fName?' — '+fName:'');
+  blk.querySelector('.ab-firm-q').value=fName||fReg;
   const hint=blk.querySelector('.ab-firm-hint');
-  if(hint&&fName){hint.textContent='✓ '+fName;hint.className='fhint ok';}
+  if(hint){hint.textContent=fReg?'Reg: '+fReg:'';hint.className='fhint ok';}
   // Enable partner input (firm is set)
   const memberQ = blk.querySelector('.ab-member-q');
   if(memberQ){ memberQ.disabled=false; memberQ.placeholder='Type MRN or partner name…'; }
@@ -2545,6 +2644,17 @@ async function _populateAuditorBlock(idx, mapped){
 }
 
 function cloneAppt(id){ openCloneApptModal(id); }
+
+function coSwitchAuditTab(type){
+  const sl=document.getElementById('co-audit-sl');
+  const cl=document.getElementById('co-audit-cl');
+  const tSl=document.getElementById('co-tab-sl');
+  const tCl=document.getElementById('co-tab-cl');
+  if(sl) sl.style.display=type==='sl'?'':'none';
+  if(cl) cl.style.display=type==='cl'?'':'none';
+  if(tSl){ tSl.style.borderBottomColor=type==='sl'?'var(--accent)':'transparent'; tSl.style.color=type==='sl'?'var(--accent)':'var(--i3)'; }
+  if(tCl){ tCl.style.borderBottomColor=type==='cl'?'var(--accent)':'transparent'; tCl.style.color=type==='cl'?'var(--accent)':'var(--i3)'; }
+}
 
 /* ════════ APPOINTMENT FORM — MULTI-AUDITOR BLOCK SYSTEM ════════ */
 
@@ -2563,18 +2673,18 @@ function apptForm(a,preCoId,preFY,preRtype){
     : (a?.rtype ? normaliseRtypeUI(a.rtype) : 'Annual Standalone');
   const rtLabel = rtValue === 'Annual Standalone' ? 'Annual — Standalone' : 'Annual — Consolidated';
   const preCoObj = preCoId ? gC(preCoId) : null;
+  const preCoName  = preCoObj ? preCoObj.name    : (a ? (gC(a.coId)?.name   ||'') : '');
   const preIsin    = preCoObj ? preCoObj.isin    : (a ? (gC(a.coId)?.isin   ||'') : '');
   const preBseCode = preCoObj ? preCoObj.bseCode : (a ? (gC(a.coId)?.bseCode||'') : '');
-  const preCoName  = preCoObj ? preCoObj.name    : (a ? (gC(a.coId)?.name   ||'') : '');
   const endDateVal   = a?.report_end_date   ? a.report_end_date.slice(0,10)   : '';
   const startDateVal = a?.report_start_date ? a.report_start_date.slice(0,10) : '';
   return`<div class="fgrid">
     <div class="fg full" style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start">
       <div style="position:relative">
         <label class="fl">Search Company <span class="req">*</span></label>
-        <input class="fc" id="mf-isin" placeholder="Type ISIN, company name or BSE code…" value="${preIsin}" oninput="mfIsinInput()" autocomplete="off">
+        <input class="fc" id="mf-isin" placeholder="Type company name, ISIN or BSE code…" value="${preCoName}" oninput="mfIsinInput()" autocomplete="off">
         <div id="mf-isin-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);max-height:240px;overflow-y:auto;margin-top:2px"></div>
-        <div class="fhint" id="mf-co-h" style="${preCoName?'color:var(--green)':''}">${preCoName ? '✓ '+preCoName+(preBseCode?' &nbsp;·&nbsp; BSE: '+preBseCode:'') : 'Search by ISIN, company name, or BSE code'}</div>
+        <div class="fhint" id="mf-co-h" style="${preIsin?'color:var(--green)':''}">${preIsin ? `✓ <span style="font-family:var(--mono);font-size:11px">${preIsin}${preBseCode?' &nbsp;·&nbsp; BSE: '+preBseCode:''}</span>` : 'Search by company name, ISIN, or BSE code'}</div>
         <input type="hidden" id="mf-co" value="${preCoId||''}">
         <input type="hidden" id="mf-rtype" value="${rtValue}">
       </div>
@@ -2583,23 +2693,30 @@ function apptForm(a,preCoId,preFY,preRtype){
         <select class="fc" id="mf-fy" style="min-width:140px">${fyOpts}</select>
       </div>
     </div>
-    <div class="fsl">Report Period & Fees</div><div class="fsep"></div>
-    <div class="fg">
-      <label class="fl">Audit Report End Date</label>
-      <input type="date" class="fc" id="mf-report-end" value="${endDateVal}" oninput="mfReportEndChange()">
-      <div class="fhint">End date of the audit report period</div>
-    </div>
-    <div class="fg">
-      <label class="fl" style="display:flex;align-items:center;gap:7px">
-        Audit Report Start Date
-        <label style="display:inline-flex;align-items:center;gap:4px;font-weight:400;font-size:11px;color:var(--i3);cursor:pointer">
-          <input type="checkbox" id="mf-start-override" onchange="mfToggleStartDate()" style="cursor:pointer"> Override
+    <div class="fsl">Report Period &amp; Signing</div><div class="fsep"></div>
+    <div class="fg full" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div>
+        <label class="fl">Audit Report End Date</label>
+        ${dpInput('mf-report-end',endDateVal,{oninput:'mfReportEndChange()'})}
+        <div class="fhint">Auto-selects FY</div>
+      </div>
+      <div>
+        <label class="fl" style="display:flex;align-items:center;gap:6px">
+          Audit Report Start Date
+          <label style="display:inline-flex;align-items:center;gap:3px;font-weight:400;font-size:11px;color:var(--i3);cursor:pointer">
+            <input type="checkbox" id="mf-start-override" onchange="mfToggleStartDate()" style="cursor:pointer"> Override
+          </label>
         </label>
-      </label>
-      <input type="date" class="fc" id="mf-report-start" value="${startDateVal}" disabled style="background:var(--s2);color:var(--i3)">
-      <div class="fhint">Auto-computed (end − 12 months). Check Override to edit.</div>
+        ${dpInput('mf-report-start',startDateVal,{disabled:true})}
+        <div class="fhint">Auto-computed (end − 12 months)</div>
+      </div>
+      <div>
+        <label class="fl">Signing / Board Meeting Date</label>
+        ${dpInput('mf-date',a?.date||'')}
+        <div class="fhint">Optional</div>
+      </div>
     </div>
-    <div class="fg full" style="display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;margin-top:4px;padding-bottom:2px">
+    <div class="fg full" style="display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;padding-bottom:2px">
       <div style="display:flex;align-items:center;gap:6px">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--i3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         <span style="font-size:11px;font-weight:700;letter-spacing:.07em;color:var(--i3);text-transform:uppercase">Auditor Details</span>
@@ -2607,10 +2724,12 @@ function apptForm(a,preCoId,preFY,preRtype){
       ${!_abIsEdit ? `<button type="button" onclick="abAdd()" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 12px;border:1px dashed var(--accent);background:transparent;color:var(--accent);border-radius:6px;cursor:pointer;font-weight:600"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Firm</button>` : ''}
     </div>
     <div class="fsep full" style="margin-top:4px"></div>
+    <div class="fg full" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;padding:0 2px;margin-bottom:2px">
+      <div style="font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase;letter-spacing:.06em">CA Firm <span class="req">*</span></div>
+      <div style="font-size:11px;font-weight:600;color:var(--i3);text-transform:uppercase;letter-spacing:.06em">Signing Partner <span class="req">*</span></div>
+      <div></div>
+    </div>
     <div class="fg full" id="ab-container">${abBlockHTML(0)}</div>
-    <div class="fsl">Signing Details</div><div class="fsep"></div>
-    <div class="fg full"><label class="fl">Signing / Board Meeting Date</label><input type="date" class="fc" id="mf-date" value="${a?.date||''}">
-      <div class="fhint">Optional — can be updated later</div></div>
     <div class="fsl">Fee Details (INR)</div><div class="fsep"></div>
     <div class="fg"><label class="fl">Audit Fee</label><input type="number" class="fc" id="mf-audit-fee" value="${a?.audit_fee||''}" placeholder="0.00" min="0" step="0.01"></div>
     <div class="fg"><label class="fl">Tax Audit Fee</label><input type="number" class="fc" id="mf-tax-fee" value="${a?.tax_audit_fee||''}" placeholder="0.00" min="0" step="0.01"></div>
@@ -2629,59 +2748,47 @@ function normaliseRtypeUI(r){
 function mfReportEndChange(){
   const endVal = document.getElementById('mf-report-end')?.value;
   const override = document.getElementById('mf-start-override')?.checked;
-  const startEl = document.getElementById('mf-report-start');
-  if(!startEl) return;
+  if(!document.getElementById('mf-report-start')) return;
   if(!override && endVal){
-    // Compute start = end - 12 months
-    const d = new Date(endVal);
+    const d = new Date(endVal+'T00:00:00');
     d.setFullYear(d.getFullYear()-1);
     d.setDate(d.getDate()+1);
-    startEl.value = d.toISOString().slice(0,10);
+    const pad=n=>String(n).padStart(2,'0');
+    dpSetValue('mf-report-start',`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+  }
+  // Auto-select FY using EOMONTH(end_date, 9) — same formula as Excel
+  if(endVal){
+    const d2 = new Date(endVal+'T00:00:00');
+    // EOMONTH(d, 9) = last day of month that is 9 months after d
+    const eoMonth = new Date(d2.getFullYear(), d2.getMonth()+10, 0);
+    const yr = eoMonth.getFullYear();
+    const fyLabel = 'FY '+yr+'-'+String(yr+1).slice(2);
+    // Correct: FY label is e.g. "FY 2022-23" where yr = ending year => label uses starting year
+    // March 31 2023 → EOMONTH = Dec 31 2023 → yr=2023 → FY 2022-23
+    const computedFY = 'FY '+(yr-1)+'-'+String(yr).slice(2);
+    const fySelect = document.getElementById('mf-fy');
+    if(fySelect){
+      const opt = [...fySelect.options].find(o => o.value === computedFY || o.textContent.trim() === computedFY);
+      if(opt) fySelect.value = opt.value;
+    }
   }
 }
 
 function mfToggleStartDate(){
   const cb = document.getElementById('mf-start-override');
-  const startEl = document.getElementById('mf-report-start');
-  if(!startEl) return;
-  if(cb?.checked){
-    startEl.disabled = false;
-    startEl.style.background = '';
-    startEl.style.color = '';
-  } else {
-    startEl.disabled = true;
-    startEl.style.background = 'var(--s2)';
-    startEl.style.color = 'var(--i3)';
-    mfReportEndChange(); // recompute
-  }
+  dpSetDis('mf-report-start', !cb?.checked);
+  if(!cb?.checked) mfReportEndChange();
 }
 
 function abBlockHTML(idx, initStatus='Active'){
   _abCount = Math.max(_abCount, idx+1);
-  const canRemove = idx > 0 && !_abIsEdit;
-  // In edit mode: show status badge + "Mark Inactive" button (one-way only)
-  // In new mode: no status UI at all — always saves as Active
-  const statusUI = _abIsEdit
-    ? `<div style="display:flex;align-items:center;gap:8px">
-        ${initStatus==='Inactive'
-          ? '<span style="font-size:11px;padding:2px 10px;background:var(--s3);color:var(--i3);border-radius:4px;font-weight:600">INACTIVE</span>'
-          : `<button type="button" onclick="abMarkInactiveEdit(${idx})" style="font-size:11px;padding:2px 10px;color:var(--red);background:var(--rbg);border:1px solid var(--rbd);border-radius:4px;cursor:pointer;font-weight:600">Mark Inactive</button>`
-        }
-        <select class="ab-status-sel" style="display:none"><option value="${initStatus}">${initStatus}</option></select>
-       </div>`
-    : `<select class="ab-status-sel" style="display:none"><option value="Active">Active</option></select>`;
+  const actionBtn = _abIsEdit
+    ? `<button type="button" onclick="abMarkRemovedEdit(${idx})" style="font-size:11px;padding:4px 12px;color:var(--red);background:var(--rbg);border:1px solid var(--rbd);border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap">Remove</button>`
+    : `<button type="button" onclick="abRemove(${idx})" style="font-size:11px;padding:4px 12px;color:var(--red);background:transparent;border:1px solid var(--rbd);border-radius:4px;cursor:pointer;font-weight:500;white-space:nowrap">✕ Remove</button>`;
 
-  return`<div class="ab-block" id="ab-${idx}" style="background:var(--s2);border:1px solid var(--b2);border-radius:8px;padding:12px 14px;margin-bottom:10px${initStatus==='Inactive'?';opacity:0.5':''}">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <span style="font-size:12px;font-weight:700;color:var(--i3);letter-spacing:.05em">AUDITOR ${idx+1}</span>
-      <div style="display:flex;align-items:center;gap:8px">
-        ${statusUI}
-        ${canRemove?`<button type="button" onclick="abRemove(${idx})" style="font-size:11px;color:var(--red);background:transparent;border:none;cursor:pointer;padding:2px 8px">✕ Remove</button>`:''}
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+  return`<div class="ab-block" id="ab-${idx}" style="margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:start">
       <div style="position:relative">
-        <label class="fl">CA Firm (Reg No.) <span class="req">*</span></label>
         <div class="srch" style="width:100%">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input class="ab-firm-q" placeholder="Type reg no. or firm name…" autocomplete="off"
@@ -2692,60 +2799,56 @@ function abBlockHTML(idx, initStatus='Active'){
         <div class="ab-firm-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);max-height:200px;overflow-y:auto;margin-top:2px"></div>
         <div class="ab-firm-hint fhint"></div>
       </div>
-      <div>
-        <label class="fl">Signing Partner <span class="req">*</span></label>
-        <div style="position:relative">
-          <div class="srch" style="width:100%;opacity:1" id="ab-member-srch-${idx}">
-            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input class="ab-member-q" placeholder="Select CA Firm first…" autocomplete="off" disabled
-              oninput="abMemberSearch(${idx})" style="border:none;box-shadow:none;padding:0;width:100%;font-family:var(--sans);font-size:13px;background:transparent">
-          </div>
-          <div class="ab-member-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);max-height:200px;overflow-y:auto;margin-top:2px"></div>
+      <div style="position:relative">
+        <div class="srch" style="width:100%" id="ab-member-srch-${idx}">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input class="ab-member-q" placeholder="Select CA Firm first…" autocomplete="off" disabled
+            oninput="abMemberSearch(${idx})" style="border:none;box-shadow:none;padding:0;width:100%;font-family:var(--sans);font-size:13px;background:transparent">
         </div>
+        <div class="ab-member-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;background:var(--surface);border:1px solid var(--b2);border-radius:var(--r);box-shadow:var(--shm);max-height:200px;overflow-y:auto;margin-top:2px"></div>
         <input type="hidden" class="ab-member-hid">
         <input type="hidden" class="ab-seq-hid">
         <div class="ab-member-hint fhint"></div>
       </div>
+      <div style="display:flex;align-items:flex-start;padding-top:4px">
+        ${actionBtn}
+      </div>
     </div>
+    <select class="ab-status-sel" style="display:none"><option value="${initStatus}">${initStatus}</option></select>
   </div>`;
 }
 
-// Edit mode: "Mark Inactive" button — one-way only, no re-activation
-async function abMarkInactiveEdit(idx) {
+async function abMarkRemovedEdit(idx) {
   if (!_abIsEdit || !editId) return;
-  if (!confirm('Mark this auditor as Inactive? This cannot be undone.')) return;
+  if (!confirm('Remove this auditor from the record? This cannot be undone.')) return;
   const blk = document.getElementById(`ab-${idx}`);
   if (!blk) return;
   const seqNo = blk.querySelector('.ab-seq-hid')?.value || '';
   try {
     await api(`/appointments/${editId}/status`, 'PATCH', {
-      record_status: 'Inactive',
+      record_status: 'Removed',
       seq_no: seqNo ? Number(seqNo) : undefined
     });
-    toast('Auditor marked Inactive — record saved', 's');
+    toast('Auditor removed from record', 's');
     await loadAllAppts();
-    closeMD(); // close modal so user can see the dimmed row in company detail
+    closeMD();
     refreshCurrentScreen();
-  } catch(e) { toast('Error saving: '+e.message,'e'); }
+  } catch(e) { toast('Error: '+e.message,'e'); }
 }
 
-// Kept for legacy/populate path — no-op in new UI
 async function abStatusChange(idx, newStatus) {}
 
-
 function abAdd(){
-  if(_abIsEdit)return; // not allowed in edit mode
+  if(_abIsEdit)return;
   const container=document.getElementById('ab-container');
   if(!container)return;
   const idx=_abCount;
   container.insertAdjacentHTML('beforeend',abBlockHTML(idx));
 }
 function abRemove(idx){
-  if(_abIsEdit)return; // not allowed in edit mode
   const blk=document.getElementById(`ab-${idx}`);
   if(blk)blk.remove();
 }
-// abMarkInactive replaced by abStatusChange dropdown
 function abGetBlock(idx){ return document.getElementById(`ab-${idx}`); }
 
 const _abFirmTimers={};
@@ -2775,10 +2878,10 @@ function abFirmSearch(idx){
 async function abSelectFirm(idx,fid,reg,name){
   const blk=abGetBlock(idx); if(!blk)return;
   blk.querySelector('.ab-firm-hid').value=fid;
-  blk.querySelector('.ab-firm-q').value=reg+' — '+name;
+  blk.querySelector('.ab-firm-q').value=name;
   blk.querySelector('.ab-firm-dd').style.display='none';
   const hint=blk.querySelector('.ab-firm-hint');
-  if(hint){hint.textContent='✓ Reg: '+reg;hint.className='fhint ok';}
+  if(hint){hint.textContent='Reg: '+reg;hint.className='fhint ok';}
   // Enable signing partner input now that a firm is chosen
   const memberQ = blk.querySelector('.ab-member-q');
   if(memberQ){
@@ -2913,18 +3016,23 @@ function mfIsinInput(){
 }
 function mfIsinSelect(coId,isin,name,cin,sector,bseCode){
   document.getElementById('mf-co').value=coId;
-  document.getElementById('mf-isin').value=isin;
+  document.getElementById('mf-isin').value=name;
   const hint=document.getElementById('mf-co-h');
-  const bsePart = bseCode ? ` &nbsp;·&nbsp; <span style="font-family:var(--mono)">BSE: ${bseCode}</span>` : '';
-  if(hint){hint.innerHTML=`✓ <span style="font-family:var(--mono);font-weight:700">${isin}</span> &nbsp;·&nbsp; <strong>${name}</strong>${bsePart}`;hint.className='fhint ok';}
+  const bsePart = bseCode ? ` &nbsp;·&nbsp; BSE: ${bseCode}` : '';
+  if(hint){hint.innerHTML=`✓ <span style="font-family:var(--mono);font-size:11px">${isin}${bsePart}</span>`;hint.className='fhint ok';}
   const dd=document.getElementById('mf-isin-dd');
   if(dd)dd.style.display='none';
 }
 async function mfIsinLookup(){ mfIsinInput(); }
 function onMFCo(){
   const co=gC(document.getElementById('mf-co')?.value);
+  const isinEl=document.getElementById('mf-isin');
   const h=document.getElementById('mf-co-h');
-  if(co){h.innerHTML=`✓ <strong>${co.name}</strong> &nbsp;<span style="color:var(--i3);font-size:11px">ISIN: ${co.isin} · ${co.sector}</span>`;h.className='fhint ok';}
+  if(co){
+    if(isinEl && !isinEl.value) isinEl.value=co.name;
+    h.innerHTML=`✓ <span style="font-family:var(--mono);font-size:11px">${co.isin}${co.bseCode?' &nbsp;·&nbsp; BSE: '+co.bseCode:''}</span>`;
+    h.className='fhint ok';
+  }
   else if(h) h.textContent='';
 }
 function onMFMem(){}
@@ -2966,6 +3074,11 @@ async function submitAppt(forceSt) {
   }
   if(!auditors.length){ showError('Missing Required Fields','At least one CA Firm and Signing Partner must be selected.'); return; }
 
+  // Duplicate auditor check: same firm + same partner cannot appear twice
+  const auditorKeys = auditors.map(a => `${a.firmId}||${a.memberId}`);
+  const dupKey = auditorKeys.find((k,i) => auditorKeys.indexOf(k) !== i);
+  if(dupKey){ showError('Duplicate Auditor','The same CA Firm and Signing Partner cannot be assigned more than once in a single record.'); return; }
+
   _saving = true;
   try {
     if (editId) {
@@ -2978,7 +3091,7 @@ async function submitAppt(forceSt) {
         const seqNo = blk.querySelector('.ab-seq-hid')?.value || undefined;
         const recSt = blk.querySelector('.ab-status-sel')?.value || 'Active';
         const obj = {
-          report_type: rtype, signing_date: signingDate,
+          signing_date: signingDate,
           sebi_filing_date: null, tenure_years: null, audit_opinion: null,
           record_status: recSt, remarks, auditor_role: 'Statutory',
           seq_no: seqNo ? Number(seqNo) : undefined,
@@ -3130,7 +3243,7 @@ function openMemberModal(memberId, prefirmId) {
     <div class="fg"><label class="fl">Qualification</label><select class="fc" id="mf2-qual" onchange="mf2QualChange()"><option value="ACA"${qual==='ACA'?' selected':''}>ACA</option><option value="FCA"${qual==='FCA'?' selected':''}>FCA</option></select></div>
     <div class="fg"><label class="fl">ACA Year</label><input class="fc" id="mf2-aca" value="${acaYear}" placeholder="e.g. 1999" oninput="mf2AcaChange()"></div>
     <div class="fg"><label class="fl">FCA Year ${fcaLocked?'<span style="font-size:10px;color:var(--i3);font-weight:400">(ACA only — N/A)</span>':'<span style="font-size:10px;color:var(--i3);font-weight:400">(auto = ACA + 5)</span>'}</label><input class="fc" id="mf2-fca" value="${fcaYear}" placeholder="${fcaLocked?'—':'e.g. 2004'}" ${fcaLocked?'disabled style="background:var(--s2);color:var(--i3);cursor:not-allowed"':'readonly style="background:var(--s2);color:var(--i3)"'}></div>
-    <div class="fg"><label class="fl">Date of Birth</label><input type="date" class="fc" id="mf2-dob" value="${m?.dob||''}"></div>
+    <div class="fg"><label class="fl">Date of Birth</label>${dpInput('mf2-dob',m?.dob||'')}</div>
     <div class="fg"><label class="fl">Gender</label><select class="fc" id="mf2-gender"><option value="">—</option><option${m?.gender==='Male'?' selected':''}>Male</option><option${m?.gender==='Female'?' selected':''}>Female</option><option${m?.gender==='Other'?' selected':''}>Other</option></select></div>
     <div class="fg"><label class="fl">Email</label><input class="fc" id="mf2-email" type="email" value="${m?.email||''}"></div>
     <div class="fg"><label class="fl">Phone</label><input class="fc" id="mf2-phone" value="${m?.phone||''}"></div>
@@ -3246,7 +3359,7 @@ function openAddPartnerModal(firmId) {
         <option>Engagement Partner</option>
         <option>Managing Partner</option>
       </select></div>
-      <div class="fg"><label class="fl">From Date</label><input type="date" class="fc" id="ap-from" value="${new Date().toISOString().slice(0,10)}">
+      <div class="fg"><label class="fl">From Date</label>${dpInput('ap-from',new Date().toISOString().slice(0,10))}
         <div class="fhint">Date this partner joined the firm</div>
       </div>
       <div class="fg full" style="padding:8px 12px;background:var(--s1);border-radius:var(--r);font-size:12px;color:var(--i3)">
@@ -3602,7 +3715,7 @@ async function renderPartnerRecords(){
   prRenderFilterPanel();
   const rows=await loadPartnerRecordsPage(_prPage);
   if(!rows) return;
-  document.querySelectorAll('#pr-table .sh-arrow').forEach(el=>el.textContent='');
+  document.querySelectorAll('#pr-table .sh-arrow').forEach(el=>el.textContent='↕');
   const arrowEl=document.getElementById('pra-'+_prSortCol);
   if(arrowEl) arrowEl.textContent=_prSortDir===1?' ▲':' ▼';
   document.getElementById('pr-cnt').textContent=`(${_prTotal.toLocaleString()})`;
@@ -3660,10 +3773,10 @@ function openAddPartnerRecordModal(){
     <div class="fg"><label class="fl">Designation</label><select class="fc" id="pradd-des">
       <option>Partner</option><option>Senior Partner</option><option>Engagement Partner</option><option>Managing Partner</option>
     </select></div>
-    <div class="fg"><label class="fl">From Date</label><input type="date" class="fc" id="pradd-from" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="fg"><label class="fl">From Date</label>${dpInput('pradd-from',new Date().toISOString().slice(0,10))}</div>
     <div class="fg" id="pradd-to-wrap">
       <label class="fl">To Date <span style="font-size:10px;color:var(--i3);font-weight:400">(only used when Status is Inactive — auto-filled, editable)</span></label>
-      <input type="date" class="fc" id="pradd-to">
+      ${dpInput('pradd-to','')}
     </div>
     <div class="fg"><label class="fl">Status</label><select class="fc" id="pradd-status" onchange="prAutoFillToDate('pradd')">
       <option value="Active" selected>Active</option><option value="Inactive">Inactive</option>
@@ -3680,10 +3793,10 @@ function openAddPartnerRecordModal(){
 // Switching back to Active clears it (To Date has no meaning for an active record).
 function prAutoFillToDate(prefix){
   const status=document.getElementById(prefix+'-status')?.value;
-  const toInput=document.getElementById(prefix+'-to');
-  if(!toInput) return;
-  if(status==='Inactive'){ if(!toInput.value) toInput.value=new Date().toISOString().slice(0,10); }
-  else { toInput.value=''; }
+  const toHid=document.getElementById(prefix+'-to');
+  if(!toHid) return;
+  if(status==='Inactive'){ if(!toHid.value){ const n=new Date(); dpSetValue(prefix+'-to',`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`); } }
+  else { dpSetValue(prefix+'-to',''); }
 }
 
 function prAddFirmSearch(){
@@ -3775,10 +3888,10 @@ async function openEditPartnerRecordModal(mfrId){
     <div class="fg"><label class="fl">Partner <span style="font-size:10px;color:var(--i3);font-weight:400">(cannot change)</span></label><input class="fc" value="${r.mem_name}" readonly style="background:var(--s2);color:var(--i3);cursor:not-allowed"></div>
     <div class="fg"><label class="fl">MRN</label><input class="fc" value="${r.mem_no}" readonly style="background:var(--s2);color:var(--i3);cursor:not-allowed"></div>
     <div class="fg"><label class="fl">Designation</label><select class="fc" id="pred-des">${desOpts}</select></div>
-    <div class="fg"><label class="fl">From Date</label><input type="date" class="fc" id="pred-from" value="${r.from_date?r.from_date.slice(0,10):''}"></div>
+    <div class="fg"><label class="fl">From Date</label>${dpInput('pred-from',r.from_date?r.from_date.slice(0,10):'')}</div>
     <div class="fg" id="pred-to-wrap">
       <label class="fl">To Date <span style="font-size:10px;color:var(--i3);font-weight:400">(only used when Status is Inactive — auto-filled, editable)</span></label>
-      <input type="date" class="fc" id="pred-to" value="${r.to_date?r.to_date.slice(0,10):''}">
+      ${dpInput('pred-to',r.to_date?r.to_date.slice(0,10):'')}
     </div>
     <div class="fg"><label class="fl">Status</label><select class="fc" id="pred-status" onchange="prAutoFillToDate('pred')">
       <option value="Active"${r.active_flag==='Active'?' selected':''}>Active</option>
@@ -3974,7 +4087,7 @@ async function renderSigningHistory() {
   if (!rows) return;
 
   // ── Update sort arrows ──
-  document.querySelectorAll('.sh-arrow').forEach(el => el.textContent = '');
+  document.querySelectorAll('#sh-table .sh-arrow').forEach(el => el.textContent = '↕');
   const arrowEl = document.getElementById('sha-' + _shSortCol);
   if (arrowEl) arrowEl.textContent = _shSortDir === 1 ? ' ▲' : ' ▼';
 
@@ -4533,6 +4646,13 @@ function showError(title, msg) {
   document.body.appendChild(el);
 }
 
+/* DEBOUNCED SEARCH — prevents firing on every keystroke for slow API calls */
+const _dbTimers={};
+function dbSearch(inputId, fn, delay=320){
+  clearTimeout(_dbTimers[inputId]);
+  _dbTimers[inputId]=setTimeout(fn, delay);
+}
+
 /* SEARCH CLEAR HELPERS */
 function toggleClear(inputId, btnId) {
   const inp = document.getElementById(inputId);
@@ -4555,6 +4675,115 @@ function toast(msg,type='s'){
   t.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;stroke:currentColor">${icons[type]}</svg><span>${msg}</span>`;
   document.getElementById('tarea').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(10px)'},3200);setTimeout(()=>t.remove(),3700);
 }
+/* ══════════ CUSTOM DATE PICKER ══════════ */
+let _dp={target:null,y:0,m:0};
+
+function dpInput(id,val,opts){
+  val=val||''; opts=opts||{};
+  const ph='Select date';
+  const txt=val?fd(val):ph;
+  const col=val?'':'var(--i3)';
+  const dis=opts.disabled?'data-dpdis="1"':'';
+  const disCls=opts.disabled?' dp-dis':'';
+  const fn=opts.oninput?` data-dpfn="${opts.oninput}"`:'';
+  return `<input type="hidden" id="${id}" value="${val}"${fn}>`+
+    `<div class="fc dp-display${disCls}" id="${id}-dpdsp" ${dis} onclick="dpOpen('${id}')">`+
+    `<span id="${id}-dptxt" style="color:${col};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${txt}</span>`+
+    `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--i3)"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`+
+    `</div>`;
+}
+
+function dpOpen(id){
+  const dsp=document.getElementById(id+'-dpdsp');
+  if(!dsp||dsp.dataset.dpdis) return;
+  _dp.target=id;
+  const v=document.getElementById(id)?.value||'';
+  if(v){const p=v.split('-');_dp.y=+p[0];_dp.m=+p[1]-1;}
+  else{const n=new Date();_dp.y=n.getFullYear();_dp.m=n.getMonth();}
+  dpRender();
+  const pp=document.getElementById('dp-popup');
+  const r=dsp.getBoundingClientRect();
+  pp.style.display='block'; pp.style.top=(r.bottom+4)+'px'; pp.style.left=r.left+'px'; pp.style.right='';
+  requestAnimationFrame(()=>{
+    const pr=pp.getBoundingClientRect();
+    if(pr.right>window.innerWidth-8) pp.style.left=(window.innerWidth-pr.width-8)+'px';
+    if(pr.bottom>window.innerHeight-8) pp.style.top=(r.top-pr.height-4)+'px';
+  });
+}
+
+function dpClose(){
+  const pp=document.getElementById('dp-popup');
+  if(pp) pp.style.display='none';
+  _dp.target=null;
+}
+
+function dpRender(){
+  const pp=document.getElementById('dp-popup');
+  if(!pp||!_dp.target) return;
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const f1=new Date(_dp.y,_dp.m,1).getDay();
+  const dim=new Date(_dp.y,_dp.m+1,0).getDate();
+  const t=new Date(); const ty=t.getFullYear(),tm=t.getMonth(),td=t.getDate();
+  const sv=document.getElementById(_dp.target)?.value||'';
+  let sy=0,sm=-1,sd=0;
+  if(sv){const p=sv.split('-');sy=+p[0];sm=+p[1]-1;sd=+p[2];}
+  let g='';
+  ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d=>g+=`<div class="dp-dh">${d}</div>`);
+  for(let i=0;i<f1;i++) g+=`<div class="dp-dc dp-empty"></div>`;
+  for(let d=1;d<=dim;d++){
+    const sel=sy===_dp.y&&sm===_dp.m&&sd===d;
+    const tod=ty===_dp.y&&tm===_dp.m&&td===d;
+    g+=`<div class="dp-dc${sel?' dp-sel':tod?' dp-today':''}" onclick="dpSel(${_dp.y},${_dp.m},${d})">${d}</div>`;
+  }
+  pp.innerHTML=`<div class="dp-nav"><button class="dp-nb" onclick="dpNav(-1,'y')">«</button><button class="dp-nb" onclick="dpNav(-1,'m')">‹</button><div class="dp-mth">${MN[_dp.m]} ${_dp.y}</div><button class="dp-nb" onclick="dpNav(1,'m')">›</button><button class="dp-nb" onclick="dpNav(1,'y')">»</button></div><div class="dp-grid">${g}</div><div class="dp-foot"><button onclick="dpSel(0,-1,0)">Clear</button><button onclick="dpClose()">Close</button></div>`;
+}
+
+function dpNav(d,u){
+  if(u==='m'){_dp.m+=d;if(_dp.m<0){_dp.m=11;_dp.y--;}else if(_dp.m>11){_dp.m=0;_dp.y++;}}
+  else _dp.y+=d;
+  dpRender();
+}
+
+function dpSel(y,m,d){
+  const val=(d&&m>=0)?`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`:'';
+  dpSetValue(_dp.target,val);
+  const inp=document.getElementById(_dp.target);
+  const fn=inp?.dataset?.dpfn;
+  if(fn) try{eval(fn);}catch(e){}
+  dpClose();
+}
+
+function dpSetValue(id,val){
+  const inp=document.getElementById(id);
+  const txt=document.getElementById(id+'-dptxt');
+  if(!inp) return;
+  inp.value=val||'';
+  if(txt){
+    if(val){txt.textContent=fd(val);txt.style.color='';}
+    else{txt.textContent='Select date';txt.style.color='var(--i3)';}
+  }
+}
+
+function dpSetDis(id,dis){
+  const dsp=document.getElementById(id+'-dpdsp');
+  if(!dsp) return;
+  if(dis){dsp.dataset.dpdis='1';dsp.classList.add('dp-dis');}
+  else{delete dsp.dataset.dpdis;dsp.classList.remove('dp-dis');}
+}
+
+function dpInit(){
+  if(document.getElementById('dp-popup')) return;
+  const el=document.createElement('div');
+  el.id='dp-popup'; el.className='dp-popup'; el.style.display='none';
+  document.body.appendChild(el);
+  document.addEventListener('click',e=>{
+    const pp=document.getElementById('dp-popup');
+    if(!pp||pp.style.display==='none') return;
+    if(!pp.contains(e.target)&&!e.target.closest('.dp-display')) dpClose();
+  },true);
+}
+dpInit();
+
 /* INIT */
 renderDash();
 

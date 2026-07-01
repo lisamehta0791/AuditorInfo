@@ -36,11 +36,16 @@ router.get('/', async (req, res) => {
     where += inClause('fm.fr_group',      toList(req.query.group),  params);
     where += inClause('fm.fr_firm_type',  toList(req.query.firm_type), params);
 
+    const sortCols = { fr_name: 'fm.fr_name' };
+    const orderBy = sortCols[req.query.sort]
+      ? `${sortCols[req.query.sort]} ${req.query.dir==='desc'?'DESC':'ASC'}`
+      : 'fm.fr_name ASC';
+
     const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total FROM ma_firm fm ${where}`, params);
     const [rows] = await db.query(`
       SELECT fm.*, ${PARTNER_COUNT_SQL}
       FROM ma_firm fm
-      ${where} ORDER BY fm.fr_name LIMIT ? OFFSET ?
+      ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
     res.json({ data: rows, total, page, totalPages: Math.ceil(total / limit), limit });
   } catch(e) { res.status(500).json({ error: e.message }); }

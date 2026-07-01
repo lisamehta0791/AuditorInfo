@@ -19,3 +19,19 @@
 UPDATE ma_company
 SET company_id = CONCAT('CO', LPAD(CAST(SUBSTRING(company_id, 3) AS UNSIGNED), 6, '0'))
 WHERE company_id REGEXP '^CO[0-9]{1,5}$';
+
+-- Step 1: Widen the ENUM to accept 'Removed' before updating rows.
+-- Run this FIRST, before the UPDATE below.
+ALTER TABLE fat_company_audit_rel
+  MODIFY COLUMN record_status ENUM('Active','Inactive','Removed') DEFAULT 'Active';
+
+-- Step 2: Rename Inactive -> Removed.
+-- After this, 'Inactive' values no longer appear; the backend excludes 'Removed' by default.
+UPDATE fat_company_audit_rel
+SET record_status = 'Removed'
+WHERE record_status = 'Inactive';
+
+-- Step 3 (optional): Tighten the ENUM to remove 'Inactive' once all rows are migrated.
+-- Only run this after confirming no 'Inactive' rows remain.
+-- ALTER TABLE fat_company_audit_rel
+--   MODIFY COLUMN record_status ENUM('Active','Removed') DEFAULT 'Active';

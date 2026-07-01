@@ -11,6 +11,7 @@ const pool = mysql.createPool({
   connectionLimit:    10,
   queueLimit:         0,
   timezone:           '+05:30',          // IST
+  dateStrings:        true,              // return DATE/DATETIME as plain strings, not JS Date objects
 });
 
 // Test on startup

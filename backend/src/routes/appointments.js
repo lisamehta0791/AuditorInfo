@@ -40,7 +40,13 @@ router.get('/', async (req, res) => {
     where += inClause('f.fy_id',           toList(req.query.fy_id),      params);
     where += inClause('f.fr_reg_no',       fr_reg_noList, params);
     where += inClause('f.mem_no',          mem_noList,    params);
-    where += inClause('f.record_status',   toList(req.query.status),  params);
+    // Exclude 'Removed' records by default; only include if explicitly requested via status=Removed
+    const statusList = toList(req.query.status);
+    if (statusList.length) {
+      where += inClause('f.record_status', statusList, params);
+    } else {
+      where += " AND f.record_status != 'Removed'";
+    }
     where += inClause('f.audit_opinion',   toList(req.query.opinion), params);
     where += inClause('f.report_type',     toList(req.query.report_type), params);
     where += inClause('f.rotation_status', toList(req.query.rotation_status), params);
@@ -283,16 +289,16 @@ router.put('/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /:id/status — mark Inactive only (cannot re-activate via this endpoint)
+// PATCH /:id/status — mark Removed (cannot re-activate via this endpoint)
 router.patch('/:id/status', async (req, res) => {
   try {
     const { record_status, seq_no } = req.body;
-    if (record_status !== 'Inactive')
-      return res.status(400).json({ error: 'Only Inactive is accepted via this endpoint' });
+    if (record_status !== 'Removed')
+      return res.status(400).json({ error: 'Only Removed is accepted via this endpoint' });
     const whereSeq = seq_no ? 'AND seq_no=?' : '';
     const seqParams = seq_no ? [seq_no] : [];
     await db.query(
-      `UPDATE fat_company_audit_rel SET record_status='Inactive' WHERE audit_rel_id=? ${whereSeq}`,
+      `UPDATE fat_company_audit_rel SET record_status='Removed' WHERE audit_rel_id=? ${whereSeq}`,
       [req.params.id, ...seqParams]);
     broadcast('appointment_updated', { audit_rel_id: req.params.id });
     res.json({ ok: true });
