@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../config/db');
 const { broadcast } = require('../events');
+const { toList, inClause } = require('../utils');
 
 function normaliseRtype(r) { return (r||'').replace(/\s*—\s*/g,' ').trim(); }
 
@@ -22,24 +23,28 @@ function rotStatus(yr) {
 
 router.get('/', async (req, res) => {
   try {
-    const { company_id='', fy_id='', opinion='', sort='', dir='' } = req.query;
+    const { sort='', dir='' } = req.query;
     const page  = parseInt(req.query.page)  || 0;
     const limit = parseInt(req.query.limit) || 0;
     const search   = req.query.search   || '';
-    const status   = req.query.status   || '';
-    const fr_reg_no  = req.query.fr_reg_no  || req.query.firm_id   || '';
-    const mem_no     = req.query.mem_no     || req.query.member_id || '';
     const audit_rel_id_filter = req.query.audit_rel_id || '';
+    const fr_reg_noList   = toList(req.query.fr_reg_no || req.query.firm_id);
+    const mem_noList      = toList(req.query.mem_no    || req.query.member_id);
+    const designationList = toList(req.query.designation);
 
     const params = [];
     let where = 'WHERE 1=1';
     if (audit_rel_id_filter) { where += ' AND f.audit_rel_id=?'; params.push(audit_rel_id_filter); }
-    if (company_id) { where += ' AND f.company_id=?';    params.push(company_id); }
-    if (fy_id)      { where += ' AND f.fy_id=?';         params.push(fy_id); }
-    if (fr_reg_no)  { where += ' AND f.fr_reg_no=?';     params.push(fr_reg_no); }
-    if (mem_no)     { where += ' AND f.mem_no=?';        params.push(mem_no); }
-    if (status)     { where += ' AND f.record_status=?'; params.push(status); }
-    if (opinion)    { where += ' AND f.audit_opinion=?'; params.push(opinion); }
+    // Multi-select filters: company_id=CO1,CO2 / fy_id=1,2 / status=Active,Inactive / opinion=.../designation=...
+    where += inClause('f.company_id',      toList(req.query.company_id), params);
+    where += inClause('f.fy_id',           toList(req.query.fy_id),      params);
+    where += inClause('f.fr_reg_no',       fr_reg_noList, params);
+    where += inClause('f.mem_no',          mem_noList,    params);
+    where += inClause('f.record_status',   toList(req.query.status),  params);
+    where += inClause('f.audit_opinion',   toList(req.query.opinion), params);
+    where += inClause('f.report_type',     toList(req.query.report_type), params);
+    where += inClause('f.rotation_status', toList(req.query.rotation_status), params);
+    where += inClause('mm.mem_designation', designationList, params);
     if (search) {
       where += ' AND (fm.fr_name LIKE ? OR mm.mem_name LIKE ? OR cm.co_name LIKE ?)';
       params.push(`%${search}%`,`%${search}%`,`%${search}%`);
@@ -52,8 +57,14 @@ router.get('/', async (req, res) => {
       ? `${sortCols[sort]} ${dir==='asc'?'ASC':'DESC'}, cm.co_name`
       : 'fy.fy_start_date DESC, cm.co_name, f.seq_no';
 
+    // STRAIGHT_JOIN forces MySQL to drive the join from the small fact table
+    // (fat_company_audit_rel, ~600 rows) instead of letting the optimizer pick
+    // the huge ma_firm (94k) / ma_member (137k) tables as the driving table,
+    // which produced a multi-second nested-loop scan and made the unfiltered
+    // /appointments request time out on the client.
     const sql = `
-      SELECT f.*, cm.co_name, cm.co_cin, cm.co_isin, cm.co_bse_code, s.sector_name,
+      SELECT STRAIGHT_JOIN
+             f.*, cm.co_name, cm.co_cin, cm.co_isin, cm.co_bse_code, s.sector_name,
              fm.fr_name, fm.fr_reg_no,
              mm.mem_name, mm.mem_no, mm.mem_designation, mm.mem_status,
              fy.fy_label
@@ -66,19 +77,45 @@ router.get('/', async (req, res) => {
       ${where} ORDER BY ${orderBy}`;
 
     if (page > 0 && limit > 0) {
-      const [[{ total }]] = await db.query(
-        `SELECT COUNT(*) AS total FROM fat_company_audit_rel f
-         JOIN ma_company cm ON cm.company_id=f.company_id
-         JOIN ma_firm fm    ON fm.fr_reg_no=f.fr_reg_no
-         JOIN ma_member mm  ON mm.mem_no=f.mem_no
-         JOIN ma_fy fy      ON fy.fy_id=f.fy_id
-         LEFT JOIN ma_sector s ON s.sector_id=cm.sector_id ${where}`, params);
+      // COUNT only needs ma_firm/ma_member joins when a name search is active.
+      // Otherwise all filters touch f.* columns, so count the fact table alone
+      // (≈600 rows) instead of joining the 94k/137k firm & member tables.
+      let total;
+      const _tc = Date.now();
+      if (search) {
+        const [[c]] = await db.query(
+          `SELECT COUNT(*) AS total FROM fat_company_audit_rel f
+           JOIN ma_company cm ON cm.company_id=f.company_id
+           JOIN ma_firm fm    ON fm.fr_reg_no=f.fr_reg_no
+           JOIN ma_member mm  ON mm.mem_no=f.mem_no
+           JOIN ma_fy fy      ON fy.fy_id=f.fy_id
+           LEFT JOIN ma_sector s ON s.sector_id=cm.sector_id ${where}`, params);
+        total = c.total;
+      } else {
+        // Rebuild a where clause that only references f.* (designation is the only
+        // join-dependent filter; if it's set we must keep the member join).
+        if (designationList.length) {
+          const [[c]] = await db.query(
+            `SELECT COUNT(*) AS total FROM fat_company_audit_rel f
+             JOIN ma_member mm ON mm.mem_no=f.mem_no ${where}`, params);
+          total = c.total;
+        } else {
+          const [[c]] = await db.query(
+            `SELECT COUNT(*) AS total FROM fat_company_audit_rel f ${where}`, params);
+          total = c.total;
+        }
+      }
+      const _td = Date.now();
       const [rows] = await db.query(sql+' LIMIT ? OFFSET ?', [...params, limit, (page-1)*limit]);
+      console.log(`[appointments] page ${page}: count ${_td-_tc}ms, data ${Date.now()-_td}ms, ${rows.length} rows`);
       return res.json({ data: rows, total, page, totalPages: Math.ceil(total/limit) });
     }
-    const [rows] = await db.query(sql, params);
+    // No pagination: add a safety cap to prevent unbounded full-table scans
+    const _t0 = Date.now();
+    const [rows] = await db.query(sql + ' LIMIT 5000', params);
+    console.log(`[appointments] returned ${rows.length} rows in ${Date.now()-_t0}ms`);
     res.json(rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[appointments] error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 router.get('/:id', async (req, res) => {

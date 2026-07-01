@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../config/db');
 const { broadcast } = require('../events');
+const { toList, inClause } = require('../utils');
 
 // Live partner count subquery — replaces fat_firm_partner_count table
 const PARTNER_COUNT_SQL = `(
@@ -21,16 +22,19 @@ router.get('/', async (req, res) => {
       return res.json(firm);
     }
 
-    const { search='', status='', region='', group='' } = req.query;
+    const { search='' } = req.query;
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
     const offset = (page - 1) * limit;
     const params = [];
     let where = 'WHERE 1=1';
     if (search)  { where += ' AND (fm.fr_name LIKE ? OR fm.fr_reg_no LIKE ?)'; params.push(`%${search}%`,`%${search}%`); }
-    if (status)  { where += ' AND fm.fr_status=?';  params.push(status); }
-    if (region)  { where += ' AND fm.fr_region=?';  params.push(region); }
-    if (group)   { where += ' AND fm.fr_group=?';   params.push(group); }
+    // Multi-select filters: status=Active,Inactive / region=Northern,Western / group=Big4,Mid-Tier
+    where += inClause('fm.fr_reg_no',     toList(req.query.fr_reg_no), params);
+    where += inClause('fm.fr_status',     toList(req.query.status), params);
+    where += inClause('fm.fr_region',     toList(req.query.region), params);
+    where += inClause('fm.fr_group',      toList(req.query.group),  params);
+    where += inClause('fm.fr_firm_type',  toList(req.query.firm_type), params);
 
     const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total FROM ma_firm fm ${where}`, params);
     const [rows] = await db.query(`
@@ -61,6 +65,7 @@ router.post('/', async (req, res) => {
             fr_firm_type, fr_icai_category, fr_established_year,
             fr_email, fr_phone, fr_website, fr_status } = req.body;
     if (!fr_name || !fr_reg_no) return res.status(400).json({ error: 'Name and registration number required' });
+    if (!fr_firm_type) return res.status(400).json({ error: 'Firm type is required' });
 
     const [[{ maxId }]] = await db.query(
       `SELECT COALESCE(MAX(CAST(SUBSTRING(firm_id,3) AS UNSIGNED)),100000) AS maxId FROM ma_firm`);
@@ -123,6 +128,7 @@ router.put('/{*id}', async (req, res) => {
     const { fr_name, fr_reg_no, fr_city, fr_region, fr_group,
             fr_firm_type, fr_icai_category, fr_established_year,
             fr_email, fr_phone, fr_website, fr_status } = req.body;
+    if (!fr_firm_type) return res.status(400).json({ error: 'Firm type is required' });
     await db.query(`
       UPDATE ma_firm SET
         fr_name=?, fr_reg_no=?, fr_city=?, fr_region=?, fr_group=?,

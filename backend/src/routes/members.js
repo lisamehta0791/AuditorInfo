@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../config/db');
 const { broadcast } = require('../events');
+const { toList, inClause } = require('../utils');
 
 // Safe MFR ID generator — seeds from actual current max
 async function nextMfrId() {
@@ -18,61 +19,184 @@ async function nextMemberId() {
 
 router.get('/', async (req, res) => {
   try {
-    const { search='', fr_reg_no='', firm_id='', include_inactive='', status='' } = req.query;
+    const { search='', include_inactive='' } = req.query;
+    const statusList = toList(req.query.status);
+    const firmList = toList(req.query.fr_reg_no || req.query.firm_id);
+    const memNoList = toList(req.query.mem_no);
+    const qualList = toList(req.query.qualification);
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
     const offset = (page - 1) * limit;
     const params = [];
-    let where = (include_inactive || status)
+    let where = (include_inactive || statusList.length)
       ? 'WHERE 1=1'
       : "WHERE mm.mem_status NOT IN ('Inactive','Expired','Not a Member')";
 
     if (search)  { where += ' AND (mm.mem_name LIKE ? OR mm.mem_no LIKE ?)'; params.push(`%${search}%`,`%${search}%`); }
-    if (status)  { where += ' AND mm.mem_status=?'; params.push(status); }
+    if (statusList.length) { where += ` AND mm.mem_status IN (${statusList.map(()=>'?').join(',')})`; params.push(...statusList); }
+    if (memNoList.length)  { where += ` AND mm.mem_no IN (${memNoList.map(()=>'?').join(',')})`; params.push(...memNoList); }
+    if (qualList.length)   { where += ` AND mm.mem_qualification IN (${qualList.map(()=>'?').join(',')})`; params.push(...qualList); }
 
-    const firmFilter = fr_reg_no || firm_id;
-    if (firmFilter) {
+    // Multi-select firm filter: fr_reg_no=001234S,005678W
+    if (firmList.length) {
       where += ` AND mm.mem_no IN (
         SELECT mem_no FROM fat_member_firm_rel
-        WHERE (fr_reg_no=? OR firm_id=?) AND active_flag='Active'
+        WHERE (fr_reg_no IN (${firmList.map(()=>'?').join(',')}) OR firm_id IN (${firmList.map(()=>'?').join(',')}))
+        AND active_flag='Active'
       )`;
-      params.push(firmFilter, firmFilter);
+      params.push(...firmList, ...firmList);
     }
 
     const [[{ total }]] = await db.query(
       `SELECT COUNT(*) AS total FROM ma_member mm ${where}`, params);
 
+    // PERF: resolve "current firm" via a per-row correlated subquery limited to the
+    // ≤500 rows on THIS page (uses idx_mfr_mem_active_from), instead of materialising
+    // a ROW_NUMBER() window over the entire ~150k-row relationship table on every
+    // request — that previously cost ~1.8s on every member-list load.
     const [rows] = await db.query(`
-      SELECT mm.*,
-             fm.fr_name AS current_firm_name,
-             fm.fr_reg_no AS current_firm_reg
-      FROM ma_member mm
-      LEFT JOIN fat_member_firm_rel mfr
-        ON mfr.mfr_id = (
-          SELECT mfr2.mfr_id FROM fat_member_firm_rel mfr2
-          WHERE mfr2.mem_no = mm.mem_no AND mfr2.active_flag = 'Active'
-          ORDER BY mfr2.from_date DESC
-          LIMIT 1
-        )
-      LEFT JOIN ma_firm fm ON fm.fr_reg_no = mfr.fr_reg_no
-      ${where}
-      ORDER BY mm.mem_name LIMIT ? OFFSET ?
+      SELECT page.*, fm.fr_name AS current_firm_name, fm.fr_reg_no AS current_firm_reg
+      FROM (
+        SELECT mm.*,
+          (SELECT mfr.fr_reg_no FROM fat_member_firm_rel mfr
+           WHERE mfr.mem_no = mm.mem_no AND mfr.active_flag = 'Active'
+           ORDER BY mfr.from_date DESC LIMIT 1) AS _cur_fr_reg_no
+        FROM ma_member mm
+        ${where}
+        ORDER BY mm.mem_name
+        LIMIT ? OFFSET ?
+      ) page
+      LEFT JOIN ma_firm fm ON fm.fr_reg_no = page._cur_fr_reg_no
+      ORDER BY page.mem_name
     `, [...params, limit, offset]);
+    rows.forEach(r => delete r._cur_fr_reg_no);
     res.json({ data: rows, total, page, totalPages: Math.ceil(total / limit), limit });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/relationships', async (req, res) => {
   try {
+    // Lightweight lookup used by the UI for firm-member dropdowns.
+    // Only return active relationships with a safety limit.
     const [rows] = await db.query(`
       SELECT mfr.mfr_id, mfr.mem_no, mfr.fr_reg_no,
              mfr.designation, mfr.active_flag,
              fm.fr_name
       FROM fat_member_firm_rel mfr
       JOIN ma_firm fm ON fm.fr_reg_no = mfr.fr_reg_no
-      WHERE mfr.active_flag = 'Active'`);
+      WHERE mfr.active_flag = 'Active'
+      LIMIT 10000`);
     res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PARTNER RECORDS ──────────────────────────────────────────────────
+// One row per firm-member relationship (fat_member_firm_rel), enriched with
+// firm name, member name and designation.
+// NOTE: declared before '/:id' so the literal path is not captured by :id.
+router.get('/partner-records', async (req, res) => {
+  try {
+    const { search='' } = req.query;
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+    const offset = (page - 1) * limit;
+    const sortCol = req.query.sort === 'mem_name' ? 'mem_name' : 'fr_name';
+    const dir = req.query.dir === 'desc' ? 'DESC' : 'ASC';
+
+    // Filters that live directly on fat_member_firm_rel — no join required to apply them.
+    // All support multi-select (comma-separated values -> IN clause).
+    const params = [];
+    let mfrWhere = 'WHERE 1=1';
+    mfrWhere += inClause('mfr.fr_reg_no',   toList(req.query.fr_reg_no),   params);
+    mfrWhere += inClause('mfr.mem_no',      toList(req.query.mem_no),      params);
+    mfrWhere += inClause('mfr.active_flag', toList(req.query.status),      params);
+    mfrWhere += inClause('mfr.designation', toList(req.query.designation), params);
+
+    let total, rows;
+    if (search) {
+      // Name search needs both master tables — slower path, only hit when the user types a query.
+      const searchParams = [...params, `%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`];
+      const searchWhere = mfrWhere + ' AND (fm.fr_name LIKE ? OR fm.fr_reg_no LIKE ? OR mm.mem_name LIKE ? OR mm.mem_no LIKE ?)';
+
+      const [[c]] = await db.query(
+        `SELECT COUNT(*) AS total
+         FROM fat_member_firm_rel mfr
+         JOIN ma_firm fm   ON fm.fr_reg_no = mfr.fr_reg_no
+         JOIN ma_member mm ON mm.mem_no    = mfr.mem_no
+         ${searchWhere}`, searchParams);
+      total = c.total;
+
+      [rows] = await db.query(`
+        SELECT mfr.mfr_id, mfr.fr_reg_no, mfr.mem_no, mfr.designation,
+               mfr.relationship_type, mfr.from_date, mfr.to_date,
+               mfr.active_flag, mfr.member_id, mfr.firm_id,
+               fm.fr_name, fm.fr_group, fm.fr_region,
+               mm.mem_name, mm.mem_qualification, mm.mem_status
+        FROM fat_member_firm_rel mfr
+        JOIN ma_firm fm   ON fm.fr_reg_no = mfr.fr_reg_no
+        JOIN ma_member mm ON mm.mem_no    = mfr.mem_no
+        ${searchWhere}
+        ORDER BY ${sortCol === 'fr_name' ? 'fm.fr_name' : 'mm.mem_name'} ${dir}
+        LIMIT ? OFFSET ?
+      `, [...searchParams, limit, offset]);
+    } else {
+      // PERF: count directly off fat_member_firm_rel (no join — these filters are all
+      // native mfr columns). Previously this always joined ma_firm (94k) + ma_member
+      // (137k), costing ~1.1-1.6s on every load even with zero filters.
+      const [[c]] = await db.query(
+        `SELECT COUNT(*) AS total FROM fat_member_firm_rel mfr ${mfrWhere}`, params);
+      total = c.total;
+
+      // PERF: only join the ONE master table needed to satisfy the requested sort
+      // column, and do it INSIDE the paging subquery (before LIMIT) — ma_firm.fr_name
+      // and ma_member.mem_name both have name indexes, so MySQL drives the scan from
+      // whichever side is being sorted and never touches the other ~94k/137k table
+      // until after the page is cut down to ≤500 rows. Previously both joins ran
+      // before LIMIT, scanning all 150k relationship rows on every load (~1-3.7s).
+      const sql = sortCol === 'fr_name' ? `
+        SELECT page.mfr_id, page.fr_reg_no, page.mem_no, page.designation,
+               page.relationship_type, page.from_date, page.to_date,
+               page.active_flag, page.member_id, page.firm_id,
+               page.fr_name, fm2.fr_group, fm2.fr_region,
+               mm.mem_name, mm.mem_qualification, mm.mem_status
+        FROM (
+          SELECT mfr.mfr_id, mfr.fr_reg_no, mfr.mem_no, mfr.designation,
+                 mfr.relationship_type, mfr.from_date, mfr.to_date,
+                 mfr.active_flag, mfr.member_id, mfr.firm_id, fm.fr_name
+          FROM fat_member_firm_rel mfr
+          JOIN ma_firm fm ON fm.fr_reg_no = mfr.fr_reg_no
+          ${mfrWhere}
+          ORDER BY fm.fr_name ${dir}
+          LIMIT ? OFFSET ?
+        ) page
+        JOIN ma_firm fm2  ON fm2.fr_reg_no = page.fr_reg_no
+        JOIN ma_member mm ON mm.mem_no     = page.mem_no
+        ORDER BY page.fr_name ${dir}
+      ` : `
+        SELECT page.mfr_id, page.fr_reg_no, page.mem_no, page.designation,
+               page.relationship_type, page.from_date, page.to_date,
+               page.active_flag, page.member_id, page.firm_id,
+               fm.fr_name, fm.fr_group, fm.fr_region,
+               page.mem_name, mm2.mem_qualification, mm2.mem_status
+        FROM (
+          SELECT mfr.mfr_id, mfr.fr_reg_no, mfr.mem_no, mfr.designation,
+                 mfr.relationship_type, mfr.from_date, mfr.to_date,
+                 mfr.active_flag, mfr.member_id, mfr.firm_id, mm.mem_name
+          FROM fat_member_firm_rel mfr
+          JOIN ma_member mm ON mm.mem_no = mfr.mem_no
+          ${mfrWhere}
+          ORDER BY mm.mem_name ${dir}
+          LIMIT ? OFFSET ?
+        ) page
+        JOIN ma_member mm2 ON mm2.mem_no    = page.mem_no
+        JOIN ma_firm fm    ON fm.fr_reg_no  = page.fr_reg_no
+        ORDER BY page.mem_name ${dir}
+      `;
+      [rows] = await db.query(sql, [...params, limit, offset]);
+    }
+
+    res.json({ data: rows, total, page, totalPages: Math.ceil(total / limit), limit });
+  } catch(e) { console.error('[partner-records] error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 router.get('/:id', async (req, res) => {
@@ -103,17 +227,16 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     let { mem_name, mem_no, mem_designation='Partner', mem_qualification='ACA',
-          mem_gender, mem_dob, mem_since_year,
+          mem_gender, mem_dob, mem_since_year, fca_year,
           mem_email, mem_phone, mem_status='Active',
           current_firm_reg_no } = req.body;
 
     if (!mem_name || !mem_no)
       return res.status(400).json({ error: 'Name and MRN required' });
 
-    const fromImport = !!current_firm_reg_no || req.body._from_import;
-    if (!current_firm_reg_no && !fromImport)
-      return res.status(400).json({ error: 'Current firm required (current_firm_reg_no)' });
-
+    // Firm linkage is no longer required at member creation. Members are linked
+    // to firms via the Partner Records / Add Partner flow. current_firm_reg_no
+    // is still accepted (e.g. legacy CSV import) but optional.
     let firmRow = null;
     if (current_firm_reg_no) {
       const [[fm]] = await db.query('SELECT fr_reg_no FROM ma_firm WHERE fr_reg_no=?', [current_firm_reg_no]);
@@ -121,17 +244,25 @@ router.post('/', async (req, res) => {
       firmRow = fm;
     }
 
+    // FCA members store both years (fca derived from aca+5 if not supplied);
+    // ACA-only members have no fca_year.
+    if (mem_qualification === 'FCA' && !fca_year && mem_since_year)
+      fca_year = Number(mem_since_year) + 5;
+    if (mem_qualification !== 'FCA') fca_year = null;
+
     const member_id = await nextMemberId();
 
     await db.query(`
       INSERT INTO ma_member
         (member_id, mem_name, mem_no, mem_designation, mem_qualification,
-         mem_gender, mem_dob, mem_since_year, mem_email, mem_phone, mem_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)
+         mem_gender, mem_dob, mem_since_year, fca_year, mem_email, mem_phone, mem_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
     `, [member_id, mem_name, mem_no, mem_designation, mem_qualification,
-        mem_gender||null, mem_dob||null, mem_since_year||null,
+        mem_gender||null, mem_dob||null, mem_since_year||null, fca_year||null,
         mem_email||null, mem_phone||null, mem_status]);
 
+    // Only create a firm-member relationship when a firm was explicitly supplied
+    // (legacy import path). Normal member creation creates no MFR row.
     const allFirmRegs = (Array.isArray(req.body.firm_reg_nos) && req.body.firm_reg_nos.length)
       ? req.body.firm_reg_nos : (firmRow ? [current_firm_reg_no] : []);
     for (const regNo of allFirmRegs) {
@@ -155,25 +286,34 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     let { mem_name, mem_no, mem_designation, mem_qualification,
-          mem_gender, mem_dob, mem_since_year,
+          mem_gender, mem_dob, mem_since_year, fca_year,
           mem_email, mem_phone, mem_status,
           current_firm_reg_no } = req.body;
 
     const [[current]] = await db.query(
-      'SELECT mem_no FROM ma_member WHERE mem_no=? OR member_id=?',
+      'SELECT mem_no, mem_designation FROM ma_member WHERE mem_no=? OR member_id=?',
       [req.params.id, req.params.id]);
     if (!current) return res.status(404).json({ error: 'Not found' });
     const currentMemNo = current.mem_no;
+
+    // Designation is no longer edited from the member form (it lives on the
+    // firm-member relationship). Preserve the existing value if not supplied.
+    const designation = mem_designation || current.mem_designation || 'Partner';
+
+    // Derive / clear fca_year based on qualification.
+    if (mem_qualification === 'FCA' && !fca_year && mem_since_year)
+      fca_year = Number(mem_since_year) + 5;
+    if (mem_qualification && mem_qualification !== 'FCA') fca_year = null;
 
     const validStatus = ['Active','Inactive','Not a Member','Expired'].includes(mem_status) ? mem_status : 'Active';
     await db.query(`
       UPDATE ma_member SET
         mem_name=?, mem_no=?, mem_designation=?, mem_qualification=?,
-        mem_gender=?, mem_dob=?, mem_since_year=?,
+        mem_gender=?, mem_dob=?, mem_since_year=?, fca_year=?,
         mem_email=?, mem_phone=?, mem_status=?
       WHERE mem_no=?
-    `, [mem_name, mem_no, mem_designation||'Partner', mem_qualification||'ACA',
-        mem_gender||null, mem_dob||null, mem_since_year||null,
+    `, [mem_name, mem_no, designation, mem_qualification||'ACA',
+        mem_gender||null, mem_dob||null, mem_since_year||null, fca_year||null,
         mem_email||null, mem_phone||null, validStatus, currentMemNo]);
 
     if (['Inactive','Expired','Not a Member'].includes(validStatus)) {
@@ -237,6 +377,72 @@ router.patch('/firm-inactive', async (req, res) => {
       `UPDATE fat_member_firm_rel SET active_flag='Inactive', to_date=CURDATE()
        WHERE mem_no=? AND fr_reg_no=? AND active_flag='Active'`,
       [mem_no, fr_reg_no]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Add a new partner record (firm-member relationship). Firm and member must
+// both already exist. Designation defaults to Partner; status defaults Active.
+router.post('/partner-records', async (req, res) => {
+  try {
+    const { fr_reg_no, mem_no, designation='Partner', from_date, to_date,
+            active_flag='Active', relationship_type='Partner' } = req.body;
+    if (!fr_reg_no || !mem_no)
+      return res.status(400).json({ error: 'fr_reg_no and mem_no required' });
+
+    const [[firm]] = await db.query('SELECT firm_id FROM ma_firm WHERE fr_reg_no=?', [fr_reg_no]);
+    if (!firm) return res.status(404).json({ error: 'Firm not found' });
+    const [[member]] = await db.query('SELECT member_id FROM ma_member WHERE mem_no=?', [mem_no]);
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+
+    const [[existing]] = await db.query(
+      `SELECT mfr_id FROM fat_member_firm_rel
+       WHERE mem_no=? AND fr_reg_no=? AND active_flag='Active'`, [mem_no, fr_reg_no]);
+    if (existing) return res.status(409).json({ error: 'This member is already an active partner at this firm' });
+
+    const flag = (active_flag==='Active') ? 'Active' : 'Inactive';
+    // To Date only makes sense for an Inactive record; default it to today when
+    // the record is being added as Inactive and no explicit date was given.
+    const resolvedToDate = flag === 'Inactive' ? (to_date || new Date().toISOString().slice(0,10)) : null;
+
+    const mfr_id = await nextMfrId();
+    await db.query(`
+      INSERT INTO fat_member_firm_rel
+        (mfr_id, member_id, firm_id, mem_no, fr_reg_no, designation,
+         relationship_type, from_date, to_date, active_flag)
+      VALUES (?,?,?,?,?,?,?,?,?,?)
+    `, [mfr_id, member.member_id, firm.firm_id, mem_no, fr_reg_no, designation,
+        relationship_type, from_date || new Date().toISOString().slice(0,10),
+        resolvedToDate, flag]);
+
+    broadcast('partner_added', { fr_reg_no, mem_no });
+    res.status(201).json({ mfr_id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Edit an existing partner record. Firm and member are NOT editable — only
+// designation, from_date, to_date and status (active_flag).
+router.put('/partner-records/:mfr_id', async (req, res) => {
+  try {
+    const { designation, from_date, to_date, active_flag, relationship_type } = req.body;
+    const [[rel]] = await db.query(
+      'SELECT mfr_id, mem_no FROM fat_member_firm_rel WHERE mfr_id=?', [req.params.mfr_id]);
+    if (!rel) return res.status(404).json({ error: 'Partner record not found' });
+
+    const flag = (active_flag === 'Active') ? 'Active' : 'Inactive';
+    // When deactivating: use the explicit to_date if supplied, otherwise keep an
+    // existing one, otherwise stamp today. When reactivating, always clear it.
+    await db.query(`
+      UPDATE fat_member_firm_rel SET
+        designation = COALESCE(?, designation),
+        relationship_type = COALESCE(?, relationship_type),
+        from_date = COALESCE(?, from_date),
+        active_flag = ?,
+        to_date = CASE WHEN ?='Inactive' THEN COALESCE(?, to_date, CURDATE()) ELSE NULL END
+      WHERE mfr_id=?
+    `, [designation||null, relationship_type||null, from_date||null, flag, flag, to_date||null, req.params.mfr_id]);
+
+    broadcast('partner_updated', { mfr_id: req.params.mfr_id, mem_no: rel.mem_no });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

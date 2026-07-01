@@ -21,7 +21,9 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    if (!origin || origin === 'null' || allowedOrigins.includes(origin)) return cb(null, true);
+    // Allow any localhost / 127.0.0.1 port (Live Server may use 5500, 5501, etc.)
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
     cb(new Error('CORS: ' + origin + ' not allowed'));
   },
   credentials: true,

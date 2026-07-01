@@ -2,19 +2,26 @@ const router = require('express').Router();
 const db     = require('../config/db');
 const auth   = require('../middleware/auth');
 const { broadcast } = require('../events');
+const { toList, inClause } = require('../utils');
 
 router.get('/', auth, async (req, res) => {
   try {
-    const { search='', sector='', exchange='', co_status='' } = req.query;
+    const { search='' } = req.query;
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
     const offset = (page - 1) * limit;
     const params = [];
     let where = 'WHERE 1=1';
-    if (search)    { where += ' AND (cm.co_name LIKE ? OR cm.co_cin LIKE ? OR cm.co_isin LIKE ? OR cm.co_bse_code LIKE ? OR cm.co_nse_symbol LIKE ?)'; params.push(`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`); }
-    if (co_status) { where += ' AND cm.co_status=?'; params.push(co_status); }
-    if (sector)    { where += ' AND s.sector_name = ?'; params.push(sector); }
-    if (exchange)  { where += ' AND cm.co_exchange_display LIKE ?'; params.push(`%${exchange}%`); }
+    if (search) { where += ' AND (cm.co_name LIKE ? OR cm.co_cin LIKE ? OR cm.co_isin LIKE ? OR cm.co_bse_code LIKE ? OR cm.co_nse_symbol LIKE ?)'; params.push(`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`); }
+    // Multi-select filters: co_status=Active,Inactive / sector=IT,Banking / company_id=CO000001,CO000002
+    where += inClause('cm.co_status',   toList(req.query.co_status),   params);
+    where += inClause('s.sector_name',  toList(req.query.sector),      params);
+    where += inClause('cm.company_id',  toList(req.query.company_id),  params);
+    const exchangeList = toList(req.query.exchange);
+    if (exchangeList.length) {
+      where += ` AND (${exchangeList.map(()=>'cm.co_exchange_display LIKE ?').join(' OR ')})`;
+      exchangeList.forEach(ex => params.push(`%${ex}%`));
+    }
 
     const [[{ total }]] = await db.query(`
       SELECT COUNT(*) AS total
