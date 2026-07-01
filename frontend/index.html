@@ -392,6 +392,13 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <button class="sb-item" onclick="nav('partner-records')">
       <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Partner Records
     </button>
+    <div class="sb-sec">Actions</div>
+    <button class="sb-item" onclick="openApptModal(null,null,'Annual Standalone')">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Standalone
+    </button>
+    <button class="sb-item" onclick="openApptModal(null,null,'Annual Consolidated')">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Consolidated
+    </button>
     <button class="sb-item" onclick="openAddPartnerRecordModal()">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Partner
     </button>
@@ -418,13 +425,6 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 <div class="topbar">
   <div class="tb-bc" id="bc"><span class="bc-cur">Dashboard</span></div>
   <div class="tb-acts">
-    <button class="btn btn-pr btn-sm" onclick="openApptModal(null,null,'Annual Standalone')">
-      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Standalone
-    </button>
-    <button class="btn btn-se btn-sm" onclick="openApptModal(null,null,'Annual Consolidated')">
-      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Consolidated
-    </button>
-
   </div>
 </div>
 <div class="content">
@@ -2711,7 +2711,7 @@ function apptForm(a,preCoId,preFY,preRtype){
         <div class="fhint">Auto-computed (end − 12 months)</div>
       </div>
       <div>
-        <label class="fl">Signing / Board Meeting Date</label>
+        <label class="fl">Signing Date</label>
         ${dpInput('mf-date',a?.date||'')}
         <div class="fhint">Optional</div>
       </div>
