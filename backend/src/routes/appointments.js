@@ -176,7 +176,8 @@ router.post('/', async (req, res) => {
       `SELECT audit_rel_id, MAX(seq_no) AS max_seq
        FROM fat_company_audit_rel
        WHERE company_id=? AND fy_id=?
-       GROUP BY audit_rel_id`,
+       GROUP BY audit_rel_id
+       LIMIT 1`,
       [company_id, fy_id]);
 
     let audit_rel_id, seq_no;
@@ -241,10 +242,11 @@ router.put('/:id', async (req, res) => {
     const setParams  = [];
     if (rtype)        { setClauses.push('report_type=?');    setParams.push(rtype); }
     if (auditor_role) { setClauses.push('auditor_role=?');   setParams.push(auditor_role); }
-    setClauses.push('audit_opinion=?');    setParams.push(audit_opinion||null);
+    // Only update these fields if explicitly provided — omitting them preserves existing DB values
+    if (audit_opinion   !== undefined) { setClauses.push('audit_opinion=?');    setParams.push(audit_opinion||null); }
     setClauses.push('signing_date=?');     setParams.push(signing_date||null);
-    setClauses.push('sebi_filing_date=?'); setParams.push(sebi_filing_date||null);
-    setClauses.push('tenure_years=?');     setParams.push(tenure_years||null);
+    if (sebi_filing_date !== undefined) { setClauses.push('sebi_filing_date=?'); setParams.push(sebi_filing_date||null); }
+    if (tenure_years    !== undefined) { setClauses.push('tenure_years=?');     setParams.push(tenure_years||null); }
     if (record_status){ setClauses.push('record_status=?');  setParams.push(record_status); }
     setClauses.push('dq_status=?');        setParams.push(dq);
     setClauses.push('rotation_status=?');  setParams.push(rot);
@@ -387,11 +389,13 @@ router.post('/import', async (req, res) => {
           WHERE audit_rel_id=? AND fr_reg_no=? AND mem_no=?
         `, [audit_opinion, signing_date, sebi_filing_date, tenure_years,
             record_status, dq, rot, remarks, dup.audit_rel_id, fr_reg_no, mem_no]);
+        await db.query(`DELETE FROM log_dq_issue WHERE audit_rel_id=? AND status='open'`, [dup.audit_rel_id]);
+        await generateDQ(db, dup.audit_rel_id, company_id, fy_id, { signing_date, audit_opinion, tenure_years, record_status });
         updated++;
       } else {
         const [[existing]] = await db.query(
           `SELECT audit_rel_id, MAX(seq_no) AS max_seq FROM fat_company_audit_rel
-           WHERE company_id=? AND fy_id=? GROUP BY audit_rel_id`, [company_id, fy_id]);
+           WHERE company_id=? AND fy_id=? GROUP BY audit_rel_id LIMIT 1`, [company_id, fy_id]);
         let audit_rel_id, seq_no;
         if (existing && existing.audit_rel_id) {
           audit_rel_id = existing.audit_rel_id;
@@ -409,6 +413,7 @@ router.post('/import', async (req, res) => {
         `, [audit_rel_id, seq_no, company_id, fy_id, fr_reg_no, mem_no, rtype, 'Statutory',
             audit_opinion, signing_date, sebi_filing_date, tenure_years, record_status,
             dq, rot, remarks]);
+        await generateDQ(db, audit_rel_id, company_id, fy_id, { signing_date, audit_opinion, tenure_years, record_status });
         inserted++;
       }
     } catch(e) { errors.push(`Row ${i+1}: ${e.message}`); skipped++; }

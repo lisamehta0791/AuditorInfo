@@ -1084,7 +1084,8 @@ function refreshCurrentScreen() {
     alerts:    ()=>renderAlerts(),
     firms:     renderFirms,
     members:   renderMembers,
-    // FIX #4: detail screens re-render with stored IDs
+    'signing-history':  renderSigningHistory,
+    'partner-records':  renderPartnerRecords,
     'company-detail': ()=>{ if(_detailCoId) renderCODetail(_detailCoId); },
     'firm-detail':    ()=>{ if(_detailFirmId) renderFirmDetail(_detailFirmId); },
     'member-detail':  ()=>{ if(_detailMemberId) renderMemberDetail(_detailMemberId); },
@@ -1102,7 +1103,7 @@ function computeIssues(){
     if(!a.tenure) issues.push({sev:'info',apptId:a.id,coId:a.coId,fy:a.fy,type:'missing',field:'Tenure',desc:'Audit tenure not entered'});
     if(a.tenure>10) issues.push({sev:'error',apptId:a.id,coId:a.coId,fy:a.fy,type:'tenure',field:'Tenure',desc:`Tenure ${a.tenure} years exceeds maximum limit`});
     if(a.tenure>=5) issues.push({sev:'warning',apptId:a.id,coId:a.coId,fy:a.fy,type:'rotation',field:'Tenure',desc:`Tenure ${a.tenure} years — rotation approaching or overdue`});
-    if(!a.opinion&&a.status==='Confirmed') issues.push({sev:'info',apptId:a.id,coId:a.coId,fy:a.fy,type:'missing',field:'Opinion Type',desc:'Audit opinion type not recorded'});
+    if(!a.opinion&&a.status==='Active') issues.push({sev:'info',apptId:a.id,coId:a.coId,fy:a.fy,type:'missing',field:'Opinion Type',desc:'Audit opinion type not recorded'});
     if(a.date&&a.sebiDate&&a.sebiDate<a.date) issues.push({sev:'error',apptId:a.id,coId:a.coId,fy:a.fy,type:'tenure',field:'SEBI Filing',desc:'SEBI filing date is before signing date'});
   });
   const seen={};
@@ -1158,7 +1159,7 @@ function nav(screen,opts={}){
   if(screen==='company-detail') _detailCoId=opts.coId||_detailCoId;
   else if(screen==='firm-detail') _detailFirmId=opts.firmId||_detailFirmId;
   else if(screen==='member-detail') _detailMemberId=opts.memberId||_detailMemberId;
-  const nm={dashboard:0,analytics:1,companies:2,records:3,'signing-history':4,dq:5,alerts:6,firms:7,members:8,'partner-records':9};
+  const nm={dashboard:0,analytics:1,companies:2,records:3,'signing-history':4,dq:5,alerts:6,firms:7,members:8,'partner-records':9,'company-detail':2,'firm-detail':7,'member-detail':8};
   document.querySelectorAll('.sb-item')[nm[screen]!==undefined?nm[screen]:0]?.classList.add('active');
   setBc(screen,opts);
   const rs={
@@ -1297,9 +1298,8 @@ async function renderAnalytics(){
   document.getElementById('at-fy2').textContent='('+fy+')';
   const colors=['var(--accent)','#6366f1','var(--teal)','var(--green)','var(--amber)','var(--purple)','var(--red)','#0ea5e9','#f97316','#84cc16','#a855f7','#ec4899'];
 
-  // Use in-memory APPTS cache (populated at startup and kept fresh via SSE)
-  // Only reload if cache is empty
-  if (!APPTS.length) await loadAllAppts();
+  // Always reload full dataset for analytics — ensures FY change doesn't leave a partial cache
+  await loadAllAppts();
   const allAppts = APPTS;
   const fyAppts = allAppts.filter(a=>(a.fy||a.fy_label)===fy);
 
@@ -2221,7 +2221,7 @@ async function renderAlerts(){
       <td class="mono">${a.fy_label||'—'}</td>
       <td style="font-weight:600;color:var(--amber)">${a.tenure_years||'—'}</td>
       <td style="font-size:12px">${a.alert_message||'—'}</td>
-      <td style="font-size:11.5px;color:var(--i3)">${a.created_at?new Date(a.created_at).toLocaleDateString('en-IN'):'—'}</td>
+      <td style="font-size:11.5px;color:var(--i3)">${a.created_at?fd(String(a.created_at).slice(0,10)):'—'}</td>
       <td><div class="row-acts">
         ${a.status==='open'?`<button class="btn btn-gh btn-xs" onclick="ackAlert(${a.alert_id})">Ack</button>
         <button class="btn btn-gh btn-xs" onclick="snoozeAlert(${a.alert_id})">Snooze</button>`:''}
@@ -2442,7 +2442,7 @@ async function renderMemberDetail(memberId){
   el.innerHTML='<div style="padding:48px;text-align:center;color:var(--i3)">Loading…</div>';
   const [memData, appts, mfrRows] = await Promise.all([
     api('/members/'+memberId),
-    api('/appointments?member_id='+memberId),
+    api('/appointments?mem_no='+memberId),
     api('/members/relationships'),
   ]);
   if(!memData){ el.innerHTML='<div style="padding:48px;text-align:center;color:var(--i3)">Member not found</div>'; return; }
@@ -2824,10 +2824,11 @@ async function abMarkRemovedEdit(idx) {
   const blk = document.getElementById(`ab-${idx}`);
   if (!blk) return;
   const seqNo = blk.querySelector('.ab-seq-hid')?.value || '';
+  if (!seqNo) { toast('Cannot identify auditor record — please close and reopen the form.', 'e'); return; }
   try {
     await api(`/appointments/${editId}/status`, 'PATCH', {
       record_status: 'Removed',
-      seq_no: seqNo ? Number(seqNo) : undefined
+      seq_no: Number(seqNo)
     });
     toast('Auditor removed from record', 's');
     await loadAllAppts();
@@ -3092,7 +3093,6 @@ async function submitAppt(forceSt) {
         const recSt = blk.querySelector('.ab-status-sel')?.value || 'Active';
         const obj = {
           signing_date: signingDate,
-          sebi_filing_date: null, tenure_years: null, audit_opinion: null,
           record_status: recSt, remarks, auditor_role: 'Statutory',
           seq_no: seqNo ? Number(seqNo) : undefined,
           audit_fee: auditFee, tax_audit_fee: taxFee,
@@ -3868,8 +3868,7 @@ function prAddClearMember(){
 async function openEditPartnerRecordModal(mfrId){
   let r=PARTNER_RECORDS.find(x=>x.mfr_id===mfrId);
   if(!r){
-    // Not in the current page cache (e.g. opened from firm detail) — fall back
-    // to the relationships cache for the row fields.
+    // Try active relationships cache first
     const rel=(MFR||[]).find(x=>x.mfr_id===mfrId);
     if(rel){
       r={ mfr_id:mfrId, fr_name:rel.fr_name||rel.fr_reg_no, fr_reg_no:rel.fr_reg_no,
@@ -3877,6 +3876,12 @@ async function openEditPartnerRecordModal(mfrId){
           designation:rel.designation||'Partner', from_date:rel.from_date||'',
           active_flag:rel.active_flag||'Active' };
     }
+  }
+  if(!r){
+    // Last resort: fetch directly from backend (handles inactive records not in cache)
+    const fetched=await api('/members/partner-records?mfr_id='+encodeURIComponent(mfrId));
+    const row=fetched?.data?.[0];
+    if(row) r=row;
   }
   if(!r){ toast('Record not found','e'); return; }
   const des=r.designation||'Partner';
@@ -4338,7 +4343,7 @@ async function submitCompanyImport() {
         sector_id, co_status: row.co_status||'Active',
       };
       // Check by ISIN — update if exists, insert if new
-      const existing = await api(`/companies?search=${encodeURIComponent(row.co_isin)}&limit=5`);
+      const existing = await api(`/companies?search=${encodeURIComponent(row.co_isin)}&limit=20`);
       const match = existing?.data?.find(c=>c.co_isin===row.co_isin);
       if(match){ await api(`/companies/${match.company_id}`,'PUT',body); updated++; }
       else { await api('/companies','POST',body); inserted++; }
@@ -4497,7 +4502,7 @@ async function submitFirmImport() {
   let inserted=0, updated=0; const submitErrors=[];
   for(const row of _firmImportRows){
     try{
-      const existing = await api(`/firms?search=${encodeURIComponent(row.fr_reg_no)}&limit=5`);
+      const existing = await api(`/firms?search=${encodeURIComponent(row.fr_reg_no)}&limit=20`);
       const match = existing?.data?.find(f=>f.fr_reg_no===row.fr_reg_no);
       const body = {
         fr_name: row.fr_name, fr_reg_no: row.fr_reg_no,
@@ -4582,7 +4587,7 @@ async function submitMemberImport() {
   let inserted=0, updated=0; const submitErrors=[];
   for(const row of _memberImportRows){
     try{
-      const existing = await api(`/members?search=${encodeURIComponent(row.mem_no)}&include_inactive=1&limit=5`);
+      const existing = await api(`/members?search=${encodeURIComponent(row.mem_no)}&include_inactive=1&limit=20`);
       const match = existing?.data?.find(m=>m.mem_no===row.mem_no);
       const body = {
         mem_name: row.mem_name, mem_no: row.mem_no,

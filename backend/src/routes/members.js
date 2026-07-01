@@ -115,6 +115,7 @@ router.get('/partner-records', async (req, res) => {
     mfrWhere += inClause('mfr.mem_no',      toList(req.query.mem_no),      params);
     mfrWhere += inClause('mfr.active_flag', toList(req.query.status),      params);
     mfrWhere += inClause('mfr.designation', toList(req.query.designation), params);
+    if (req.query.mfr_id) { mfrWhere += ' AND mfr.mfr_id = ?'; params.push(req.query.mfr_id); }
 
     let total, rows;
     if (search) {
