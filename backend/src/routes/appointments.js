@@ -40,12 +40,12 @@ router.get('/', async (req, res) => {
     where += inClause('f.fy_id',           toList(req.query.fy_id),      params);
     where += inClause('f.fr_reg_no',       fr_reg_noList, params);
     where += inClause('f.mem_no',          mem_noList,    params);
-    // Exclude 'Removed' records by default; only include if explicitly requested via status=Removed
+    // Exclude 'Removed'/'Inactive' records by default; only include if explicitly requested via status=
     const statusList = toList(req.query.status);
     if (statusList.length) {
       where += inClause('f.record_status', statusList, params);
     } else {
-      where += " AND f.record_status != 'Removed'";
+      where += " AND f.record_status NOT IN ('Removed','Inactive')";
     }
     where += inClause('f.audit_opinion',   toList(req.query.opinion), params);
     where += inClause('f.report_type',     toList(req.query.report_type), params);
@@ -57,7 +57,8 @@ router.get('/', async (req, res) => {
     }
     const sortCols = {
       seq_no: 'f.seq_no', signing_date: 'f.signing_date', tenure_years: 'f.tenure_years',
-      fr_name: 'fm.fr_name', mem_name: 'mm.mem_name', co_name: 'cm.co_name'
+      fr_name: 'fm.fr_name', mem_name: 'mm.mem_name', co_name: 'cm.co_name',
+      report_end_date: 'f.report_end_date'
     };
     const orderBy = sortCols[sort]
       ? `${sortCols[sort]} ${dir==='asc'?'ASC':'DESC'}, cm.co_name`
@@ -70,7 +71,7 @@ router.get('/', async (req, res) => {
     // /appointments request time out on the client.
     const sql = `
       SELECT STRAIGHT_JOIN
-             f.*, cm.co_name, cm.co_cin, cm.co_isin, cm.co_bse_code, s.sector_name,
+             f.*, cm.co_name, cm.co_cin, cm.co_isin, cm.co_bse_code, cm.co_nse_symbol, s.sector_name,
              fm.fr_name, fm.fr_reg_no,
              mm.mem_name, mm.mem_no, mm.mem_designation, mm.mem_status,
              fy.fy_label
@@ -127,7 +128,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const [[row]] = await db.query(`
-      SELECT f.*, cm.co_name, cm.co_isin, cm.co_bse_code,
+      SELECT f.*, cm.co_name, cm.co_isin, cm.co_bse_code, cm.co_nse_symbol,
              fm.fr_name, fm.fr_reg_no, mm.mem_name, mm.mem_no, fy.fy_label
       FROM fat_company_audit_rel f
       JOIN ma_company cm ON cm.company_id = f.company_id
@@ -367,7 +368,7 @@ router.post('/import', async (req, res) => {
       const rtype = normaliseRtype(
         ['Annual Standalone','Annual Consolidated'].includes(row.report_type)
           ? row.report_type : 'Annual Standalone');
-      const record_status = ['Active','Inactive'].includes(row.record_status) ? row.record_status : 'Active';
+      const record_status = ['Active','Removed'].includes(row.record_status) ? row.record_status : 'Active';
       const tenure_years  = row.tenure_years ? parseInt(row.tenure_years)||null : null;
       const audit_opinion = row.audit_opinion || null;
       const signing_date  = row.signing_date  || null;

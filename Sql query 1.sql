@@ -35,3 +35,9 @@ WHERE record_status = 'Inactive';
 -- Only run this after confirming no 'Inactive' rows remain.
 -- ALTER TABLE fat_company_audit_rel
 --   MODIFY COLUMN record_status ENUM('Active','Removed') DEFAULT 'Active';
+ALTER TABLE ma_member ADD COLUMN mem_city VARCHAR(100) NULL AFTER mem_no;
+
+
+UPDATE fat_company_audit_rel
+SET report_end_date = '2025-03-31'
+WHERE report_end_date IS NULL;

@@ -231,7 +231,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    let { mem_name, mem_no, mem_designation='Partner', mem_qualification='ACA',
+    let { mem_name, mem_no, mem_city, mem_designation='Partner', mem_qualification='ACA',
           mem_gender, mem_dob, mem_since_year, fca_year,
           mem_email, mem_phone, mem_status='Active',
           current_firm_reg_no } = req.body;
@@ -259,10 +259,10 @@ router.post('/', async (req, res) => {
 
     await db.query(`
       INSERT INTO ma_member
-        (member_id, mem_name, mem_no, mem_designation, mem_qualification,
+        (member_id, mem_name, mem_no, mem_city, mem_designation, mem_qualification,
          mem_gender, mem_dob, mem_since_year, fca_year, mem_email, mem_phone, mem_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-    `, [member_id, mem_name, mem_no, mem_designation, mem_qualification,
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `, [member_id, mem_name, mem_no, mem_city||null, mem_designation, mem_qualification,
         mem_gender||null, mem_dob||null, mem_since_year||null, fca_year||null,
         mem_email||null, mem_phone||null, mem_status]);
 
@@ -290,7 +290,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    let { mem_name, mem_no, mem_designation, mem_qualification,
+    let { mem_name, mem_no, mem_city, mem_designation, mem_qualification,
           mem_gender, mem_dob, mem_since_year, fca_year,
           mem_email, mem_phone, mem_status,
           current_firm_reg_no } = req.body;
@@ -313,11 +313,11 @@ router.put('/:id', async (req, res) => {
     const validStatus = ['Active','Inactive','Not a Member','Expired'].includes(mem_status) ? mem_status : 'Active';
     await db.query(`
       UPDATE ma_member SET
-        mem_name=?, mem_no=?, mem_designation=?, mem_qualification=?,
+        mem_name=?, mem_no=?, mem_city=?, mem_designation=?, mem_qualification=?,
         mem_gender=?, mem_dob=?, mem_since_year=?, fca_year=?,
         mem_email=?, mem_phone=?, mem_status=?
       WHERE mem_no=?
-    `, [mem_name, mem_no, designation, mem_qualification||'ACA',
+    `, [mem_name, mem_no, mem_city||null, designation, mem_qualification||'ACA',
         mem_gender||null, mem_dob||null, mem_since_year||null, fca_year||null,
         mem_email||null, mem_phone||null, validStatus, currentMemNo]);
 

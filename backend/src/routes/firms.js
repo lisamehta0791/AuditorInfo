@@ -94,39 +94,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.post('/{*id}/partners', async (req, res) => {
-  try {
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const { mem_no, designation, from_date } = req.body;
-    if (!mem_no) return res.status(400).json({ error: 'mem_no required' });
-
-    const [[member]] = await db.query('SELECT mem_no, mem_name FROM ma_member WHERE mem_no=?', [mem_no]);
-    if (!member) return res.status(404).json({ error: 'Member not found' });
-
-    const [[existing]] = await db.query(
-      `SELECT mfr_id FROM fat_member_firm_rel
-       WHERE mem_no=? AND fr_reg_no=? AND active_flag='Active'`,
-      [mem_no, id]);
-    if (existing) return res.status(409).json({ error: 'Member is already an active partner at this firm' });
-
-    const [[{ maxMfr }]] = await db.query(
-      `SELECT COALESCE(MAX(CAST(SUBSTRING(mfr_id,4) AS UNSIGNED)),150000) AS maxMfr FROM fat_member_firm_rel`);
-    const mfr_id = 'MFR' + String(Number(maxMfr)+1).padStart(6,'0');
-    await db.query(`
-      INSERT INTO fat_member_firm_rel
-        (mfr_id, member_id, firm_id, mem_no, fr_reg_no, designation, from_date, active_flag)
-      SELECT ?, m.member_id, f.firm_id, ?, ?, ?, ?, 'Active'
-      FROM ma_member m, ma_firm f
-      WHERE m.mem_no=? AND f.fr_reg_no=?
-    `, [mfr_id, mem_no, id, designation||'Partner',
-        from_date||new Date().toISOString().slice(0,10),
-        mem_no, id]);
-
-    broadcast('partner_added', { fr_reg_no: id, mem_no });
-    res.status(201).json({ mfr_id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
 router.put('/{*id}', async (req, res) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
