@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -574,7 +575,6 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
           <th class="sh-sort" data-col="firmName" onclick="recSort('firmName')">CA Firm <span class="sh-arrow" id="reca-firmName">↕</span></th>
           <th class="sh-sort" data-col="partnerName" onclick="recSort('partnerName')">Partner <span class="sh-arrow" id="reca-partnerName">↕</span></th>
           <th class="sh-sort" data-col="signingDate" onclick="recSort('signingDate')">Signing Date <span class="sh-arrow" id="reca-signingDate">↕</span></th>
-          <th>DQ</th>
           <th></th>
         </tr>
       </thead>
@@ -751,6 +751,10 @@ const bdg       = (st,label)=> { const m={Active:'ok',Removed:'inactive',Inactiv
 const exchBdg   = ex => ex.includes('/')?'<span class="bdg nse" style="background:var(--gbg);color:var(--green);border-color:var(--gbd)">NSE/BSE</span>':ex==='NSE'?'<span class="bdg nse">NSE</span>':'<span class="bdg bse">BSE</span>';
 
 /* ══════════ FETCH HELPERS ══════════ */
+// Single fetch wrapper used by every screen/modal in this file to talk to
+// the Express backend at API + path (e.g. api('/appointments'), api('/firms/'+id,'PUT',body)).
+// Adds a 30s timeout, JSON encode/decode, and throws on non-2xx so callers
+// can just try/catch instead of checking res.ok everywhere.
 async function api(path, method='GET', body=null) {
   // IMPORTANT: never put an AbortSignal (or AbortController) inside the fetch
   // options object. Some serving environments (e.g. VS Code Live Preview, and
@@ -811,7 +815,12 @@ function mapCompany(c) {
   };
 }
 
-/** Map API appointment row → UI shape */
+// Map API appointment row → UI shape. Called on every appointment list/
+// load (loadAppts, loadAllAppts, clone/edit fetches). Carries "snapshot"
+// fields (coName/isin/bseCode/firmName/firmReg/memberName/memberMrn) straight
+// from the backend's JOIN so screens can always show a name even if the
+// small client-side COMPANIES/FIRMS/MEMBERS caches don't have that record
+// loaded — do not remove these in favor of a cache lookup.
 function mapAppt(a) {
   return {
     id:         a.audit_rel_id,
@@ -830,6 +839,7 @@ function mapAppt(a) {
     // Snapshot names — populated by backend JOIN, always reliable
     coName:     a.co_name   || '',
     isin:       a.co_isin   || '',
+    bseCode:    a.co_bse_code || '',
     firmName:   a.fr_name   || '',
     firmReg:    a.fr_reg_no || '',
     memberName: a.mem_name  || '',
@@ -908,10 +918,9 @@ async function loadAll() {
     ]);
     if (!fys) return; // 401 — login shown
 
-    // Fiscal years
     FYS     = fys.map(f => f.fy_label);
     SECTORS = sectors;
-    window._fyCache = fys; // FIX #10: cache for submitAppt
+    window._fyCache = fys; // used by submitAppt to resolve fy_label -> fy_id
 
     // Populate all FY selectors dynamically — latest year (index 0) is default
     const fyOptions = FYS.map((y,i) => `<option value="${y}"${i===0?' selected':''}>${y}</option>`).join('');
@@ -1109,17 +1118,46 @@ function getRotationAlerts(){
   return alerts;
 }
 
-/* ══════════ RENDER FUNCTIONS (original, unchanged) ══════════ */
+/* ══════════ RENDER FUNCTIONS ══════════ */
 
 // Store detail IDs so refreshCurrentScreen can re-render correctly
 let _detailCoId='', _detailFirmId='', _detailMemberId='';
 
+// Screen name -> its filter panel's pageKey (see FILTER_STATE), for clearing
+// filters when the user navigates away from a filtered list screen.
+const SCREEN_FILTER_PAGEKEY = {records:'records', firms:'firms', members:'members', companies:'companies', 'partner-records':'partnerRecords'};
+// Screen name -> its search box's input id, for clearing the search text
+// (same treatment as SCREEN_FILTER_PAGEKEY above) when the user navigates
+// away from that screen.
+const SCREEN_SEARCH_ID = {dashboard:'ds-q', records:'rec-q', firms:'firm-q', members:'mem-q', companies:'co-q', 'partner-records':'pr-q'};
+// Single-page-app router: called from every sidebar link and "back"/detail
+// link (e.g. nav('firm-detail',{firmId})) to switch the visible .screen div,
+// update the sidebar highlight + breadcrumb, and invoke that screen's
+// render function. Also clears any active list-filters/search text on the
+// screen being left, so filters and searches don't leak across navigations.
 function nav(screen,opts={}){
+  const prevScreen = curScreen;
+  if(prevScreen && prevScreen!==screen && SCREEN_FILTER_PAGEKEY[prevScreen]){
+    fpClearAll(SCREEN_FILTER_PAGEKEY[prevScreen]);
+  }
+  if(prevScreen && prevScreen!==screen && SCREEN_SEARCH_ID[prevScreen]){
+    const sid = SCREEN_SEARCH_ID[prevScreen];
+    const inp = document.getElementById(sid);
+    if(inp && inp.value){
+      inp.value=''; toggleClear(sid, sid+'-clear');
+      // Companies/Firms/Members keep their list in an in-memory array that's
+      // only refreshed by their dedicated search function (unlike Records/
+      // Partner Records, which re-fetch fresh on every render) — so clearing
+      // the box alone wouldn't drop a still-filtered list. Re-run the same
+      // search function now, with the box already empty, to reset it.
+      const resetFn = {companies:coSearch, firms:firmSearch, members:memberSearch}[prevScreen];
+      if(resetFn) resetFn();
+    }
+  }
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('s-'+screen).classList.add('active');
   curScreen=screen;
-  // Track current detail IDs for refresh
   if(screen==='company-detail') _detailCoId=opts.coId||_detailCoId;
   else if(screen==='firm-detail') _detailFirmId=opts.firmId||_detailFirmId;
   else if(screen==='member-detail') _detailMemberId=opts.memberId||_detailMemberId;
@@ -1131,7 +1169,6 @@ function nav(screen,opts={}){
     dq:()=>renderDQ(),alerts:()=>renderAlerts(),firms:renderFirms,
     members:renderMembers,analytics:renderAnalytics,
     'partner-records':renderPartnerRecords,
-    // FIX #4: detail screens included in dispatch map
     'company-detail':()=>{ if(_detailCoId) renderCODetail(_detailCoId); },
     'firm-detail':   ()=>{ if(_detailFirmId) renderFirmDetail(_detailFirmId); },
     'member-detail': ()=>{ if(_detailMemberId) renderMemberDetail(_detailMemberId); },
@@ -1179,7 +1216,7 @@ function renderDash(){
   document.getElementById('ds-sub').textContent=fy+' — Completion and compliance overview';
   document.getElementById('ds-topfy').textContent=fy;
   const total=companiesTotal||COMPANIES.length;
-  // FIX #15: Derive status counts from APPTS across all companies (not just page cache)
+  // Derive status counts from APPTS across all companies, not just the current page cache
   const fyAppts=APPTS.filter(a=>a.fy===fy);
   const coApptMap={};
   fyAppts.forEach(a=>{if(!coApptMap[a.coId])coApptMap[a.coId]=[];coApptMap[a.coId].push(a);});
@@ -1222,11 +1259,20 @@ function renderDash(){
   document.getElementById('ds-alert-zone').innerHTML=az;
 
   // top firms
-  const fc={};APPTS.filter(a=>a.fy===fy&&a.status==='Active').forEach(a=>fc[a.firmId]=(fc[a.firmId]||0)+1);
+  // Track a name alongside the count from APPTS' own snapshot field
+  // (a.firmName, populated by the backend JOIN — always reliable) instead of
+  // looking the name up via the small FIRMS cache below, which only holds
+  // whichever firms have been viewed elsewhere and shows "undefined" for
+  // any firm not already in it.
+  const fc={},fn={};
+  APPTS.filter(a=>a.fy===fy&&a.status==='Active').forEach(a=>{
+    fc[a.firmId]=(fc[a.firmId]||0)+1;
+    if(!fn[a.firmId]) fn[a.firmId]=a.firmName||gF(a.firmId)?.name||'';
+  });
   const sf=Object.entries(fc).sort((a,b)=>b[1]-a[1]).slice(0,5);const mx=sf[0]?.[1]||1;
-  document.getElementById('ds-firms').innerHTML=sf.map(([fid,cnt])=>{const f=gF(fid);return`
+  document.getElementById('ds-firms').innerHTML=sf.map(([fid,cnt])=>{return`
     <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px">
-      <span style="cursor:pointer;color:var(--accent);font-weight:500" onclick="nav('firm-detail',{firmId:'${fid}'})">${f?.name}</span>
+      <span style="cursor:pointer;color:var(--accent);font-weight:500" onclick="nav('firm-detail',{firmId:'${fid}'})">${fn[fid]||'—'}</span>
       <span style="font-weight:700">${cnt}</span></div>
     <div class="progress-bar"><div class="pb-fill" style="width:${Math.round(cnt/mx*100)}%;background:var(--accent)"></div></div></div>`
   }).join('')||'<span style="color:var(--i3);font-size:13px">No confirmed appointments yet</span>';
@@ -1333,21 +1379,31 @@ async function renderAnalytics(){
   if(dlEl) dlEl.innerHTML=sct.map(([s,cnt],i)=>`<div class="dl-item"><div class="dl-dot" style="background:${sc2[i%sc2.length]}"></div><span>${s}</span><span class="dl-val">${cnt}</span></div>`).join('');
 
   // ── Heat map ──
-  const ft={};allAppts.forEach(a=>{const k=a.firmId||'';if(k)ft[k]=(ft[k]||0)+1;});
+  // Group by firm NAME, not registration number — the same firm often holds
+  // several ICAI registration numbers for different city branches, and those
+  // should be combined into one row rather than shown as separate firms.
+  const ft={};allAppts.forEach(a=>{const k=(a.firmName||gFN(a.firmId)||'').trim();if(k)ft[k]=(ft[k]||0)+1;});
   const topF=Object.entries(ft).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([f])=>f);
   const fyCols=[...new Set(allAppts.map(a=>a.fy||a.fy_label).filter(Boolean))].sort((a,b)=>b.localeCompare(a)).slice(0,7);
-  const gHC=(fid,fy2)=>allAppts.filter(a=>a.firmId===fid&&(a.fy||a.fy_label)===fy2).length;
+  const gHC=(fname,fy2)=>allAppts.filter(a=>(a.firmName||gFN(a.firmId)||'').trim()===fname&&(a.fy||a.fy_label)===fy2).length;
   const maxH=Math.max(1,...topF.flatMap(f=>fyCols.map(y=>gHC(f,y))));
   const htEl=document.getElementById('at-heat');
   if(htEl){
     if(!topF.length){htEl.innerHTML='<div style="padding:24px;color:var(--i3)">No data</div>';}
     else{
-      let grid=`<div style="display:grid;grid-template-columns:160px repeat(${fyCols.length},1fr);gap:3px;font-size:11px"><div style="font-weight:700;color:var(--i3);padding:4px">FIRM</div>`;
+      // Full firm name shown (wrapped, not truncated) — several firms share a
+      // common first word or two (e.g. multiple distinct "S R ..." firms, or
+      // "DELOITTE HASKINS & SELLS" vs "...& SELLS LLP"), so a 2-word preview
+      // made genuinely different firms look identical. A representative
+      // registration number is shown underneath so firms sharing a name
+      // prefix are still visually distinguishable at a glance.
+      const regFor=(nm)=>{ const row=allAppts.find(a=>(a.firmName||gFN(a.firmId)||'').trim()===nm); return row?.firmReg||row?.firmId||''; };
+      let grid=`<div style="display:grid;grid-template-columns:220px repeat(${fyCols.length},1fr);gap:3px;font-size:11px"><div style="font-weight:700;color:var(--i3);padding:4px">FIRM</div>`;
       fyCols.forEach(y=>{grid+=`<div style="font-weight:600;color:var(--i3);text-align:center;padding:4px">${y.replace('FY ','')}</div>`;});
-      topF.forEach(fid=>{
-        const nm=gFN(fid);
-        grid+=`<div style="font-size:11px;font-weight:500;padding:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nm}">${nm.split(' ').slice(0,2).join(' ')}</div>`;
-        fyCols.forEach(y=>{const cnt=gHC(fid,y);const op=cnt/maxH;grid+=`<div style="background:rgba(37,99,235,${cnt?0.15+op*0.75:0.04});text-align:center;padding:5px 2px;border-radius:3px;font-weight:${cnt?600:400};color:${cnt?'var(--ink)':'var(--i3)'}" title="${nm} — ${y}: ${cnt}">${cnt||''}</div>`;});
+      topF.forEach(nm=>{
+        const reg=regFor(nm);
+        grid+=`<div style="font-size:11px;font-weight:500;padding:4px;line-height:1.35" title="${nm}">${nm}${reg?`<div style="font-size:9.5px;font-weight:400;color:var(--i3);font-family:var(--mono)">${reg}</div>`:''}</div>`;
+        fyCols.forEach(y=>{const cnt=gHC(nm,y);const op=cnt/maxH;grid+=`<div style="background:rgba(37,99,235,${cnt?0.15+op*0.75:0.04});text-align:center;padding:5px 2px;border-radius:3px;font-weight:${cnt?600:400};color:${cnt?'var(--ink)':'var(--i3)'}" title="${nm} — ${y}: ${cnt}">${cnt||''}</div>`;});
       });
       grid+='</div>';
       htEl.innerHTML=grid;
@@ -1587,8 +1643,8 @@ async function renderCODetail(coId){
             <td style="padding:10px 14px;font-size:12.5px">${endDate}</td>
             <td style="padding:10px 14px;font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'—'}</td>
             <td style="padding:10px 14px"><div class="row-acts">
-              <button class="btn btn-gh btn-xs" onclick="openEditAppt('${x.audit_rel_id}')">Edit</button>
-              <button class="btn btn-gh btn-xs" onclick="openCloneApptModal('${x.audit_rel_id}')">Clone</button>
+              <button class="btn btn-gh btn-xs" onclick="openEditAppt('${x.audit_rel_id}','${x.report_type}')">Edit</button>
+              <button class="btn btn-gh btn-xs" onclick="openCloneApptModal('${x.audit_rel_id}','${x.report_type}')">Clone</button>
             </div></td>
           </tr>`;}).join('');
       }).join('')}</tbody>
@@ -1630,8 +1686,8 @@ async function renderCODetail(coId){
             <td style="padding:10px 14px;font-size:12.5px">${endDate}</td>
             <td style="padding:10px 14px;font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'—'}</td>
             <td style="padding:10px 14px"><div class="row-acts">
-              <button class="btn btn-gh btn-xs" onclick="openEditAppt('${x.audit_rel_id}')">Edit</button>
-              <button class="btn btn-gh btn-xs" onclick="openCloneApptModal('${x.audit_rel_id}')">Clone</button>
+              <button class="btn btn-gh btn-xs" onclick="openEditAppt('${x.audit_rel_id}','${x.report_type}')">Edit</button>
+              <button class="btn btn-gh btn-xs" onclick="openCloneApptModal('${x.audit_rel_id}','${x.report_type}')">Clone</button>
             </div></td>
           </tr>`;}).join('');
       }).join('')}</tbody>
@@ -1703,6 +1759,27 @@ function fpToggleValue(pageKey, fieldKey, value, label){
 function fpClearField(pageKey, fieldKey){
   if (FILTER_STATE[pageKey]) delete FILTER_STATE[pageKey][fieldKey];
 }
+// Replace (not toggle) a field's whole value — used by single-value inputs
+// like the date-range field below, where typing a new date should overwrite
+// the old one instead of accumulating into a set.
+function fpSetSingleValue(pageKey, fieldKey, value){
+  FILTER_STATE[pageKey] = FILTER_STATE[pageKey] || {};
+  if (value) FILTER_STATE[pageKey][fieldKey] = new Set([value]);
+  else delete FILTER_STATE[pageKey][fieldKey];
+}
+// Called after any field's value changes, to re-render every OTHER field
+// that declared `dependsOn: <this field's key>` (e.g. the Report End Date
+// range depends on Financial Year — it's disabled until a FY is picked).
+// If the depended-on field lost its last selection, the dependent field's
+// own value is cleared too, so a stale date range can't silently apply
+// once its required Financial Year filter is removed.
+function fpRefreshDependents(pageKey, fieldKey){
+  (FILTER_FIELDS[pageKey]||[]).forEach(f => {
+    if (f.dependsOn !== fieldKey) return;
+    if (!fpValues(pageKey, f.dependsOn).length) fpClearField(pageKey, f.key);
+    fpRefreshField(pageKey, f.key);
+  });
+}
 function fpClearAll(pageKey){
   FILTER_STATE[pageKey] = {};
 }
@@ -1768,13 +1845,40 @@ function fpRenderField(pageKey, f){
       <div id="fp-chips-${pageKey}-${f.key}" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${chips}</div>
     </div>`;
   }
+  if (f.type === 'month-range') {
+    // Gated field: only interactive once its dependsOn field (e.g. 'fy') has
+    // at least one selection — see fpRefreshDependents, which re-renders this
+    // whenever that field changes. No calendar here on purpose — the year is
+    // already implied by whichever FY(s) are selected above, so this only
+    // ever asks for a MONTH NUMBER (1-12), typed directly, applied across
+    // every selected FY. Value is stored as ONE JSON-stringified {from,to}
+    // under f.key, same single-value pattern every other filter here uses.
+    const enabled = !f.dependsOn || fpValues(pageKey, f.dependsOn).length > 0;
+    const raw = fpValues(pageKey, f.key)[0];
+    let fromM = '', toM = '';
+    if (raw) { try { const o = JSON.parse(raw); fromM = o.from||''; toM = o.to||''; } catch(e) {} }
+    const hint = !enabled
+      ? ` <span style="font-weight:400;font-size:11px;color:var(--i3)">(select a Financial Year above first)</span>`
+      : ` <span style="font-weight:400;font-size:11px;color:var(--i3)">(type month number, 1–12)</span>`;
+    const disAttr = enabled ? '' : 'disabled';
+    return `<div style="grid-column:1/-1">
+      <div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--i2)">${f.label}${hint}</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="fc" id="fp-${pageKey}-${f.key}-from" ${disAttr} value="${fromM}" placeholder="e.g. 4" maxlength="2" inputmode="numeric" autocomplete="off"
+          style="flex:1;font-size:12.5px;padding:6px 8px" onblur="fpMonthBlur('${pageKey}','${f.key}','from')" onkeydown="if(event.key==='Enter')this.blur();">
+        <span style="color:var(--i3);font-size:12px">to</span>
+        <input class="fc" id="fp-${pageKey}-${f.key}-to" ${disAttr} value="${toM}" placeholder="e.g. 6" maxlength="2" inputmode="numeric" autocomplete="off"
+          style="flex:1;font-size:12.5px;padding:6px 8px" onblur="fpMonthBlur('${pageKey}','${f.key}','to')" onkeydown="if(event.key==='Enter')this.blur();">
+      </div>
+    </div>`;
+  }
   return `<div>
     <div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--i2)">${f.label}</div>
     <div style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto">
       ${(f.options||[]).map(o => `
         <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
           <input type="checkbox" ${fpHas(pageKey,f.key,o.value)?'checked':''}
-            onchange="fpToggleValue('${pageKey}','${f.key}','${o.value}','${(o.label||o.value).replace(/'/g,"\\'")}')">
+            onchange="fpToggleValue('${pageKey}','${f.key}','${o.value}','${(o.label||o.value).replace(/'/g,"\\'")}');fpRefreshDependents('${pageKey}','${f.key}')">
           ${o.label}
         </label>`).join('')}
     </div>
@@ -1790,6 +1894,30 @@ function fpRefreshField(pageKey, fieldKey){
   if (grid && grid.children[idx]) grid.children[idx].outerHTML = fpRenderField(pageKey, f);
 }
 
+// Validates a manually-typed month number for a 'month-range' field on blur
+// (must be a whole number 1-12 — 1=January … 12=December); rejects anything
+// else with a toast and clears that box. Then re-stores both from/to boxes
+// as one {from,to} JSON value in FILTER_STATE via fpApplyMonthRange.
+function fpMonthBlur(pageKey, key, which){
+  const el = document.getElementById(`fp-${pageKey}-${key}-${which}`);
+  if (!el) return;
+  const raw = el.value.trim();
+  if (raw) {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n<1 || n>12) {
+      toast('Month must be a whole number from 1 to 12 (e.g. 4 for April)','e');
+      el.value = '';
+    } else {
+      el.value = String(n);
+    }
+  }
+  fpApplyMonthRange(pageKey, key);
+}
+function fpApplyMonthRange(pageKey, key){
+  const fromV = document.getElementById(`fp-${pageKey}-${key}-from`)?.value || '';
+  const toV   = document.getElementById(`fp-${pageKey}-${key}-to`)?.value   || '';
+  fpSetSingleValue(pageKey, key, (fromV||toV) ? JSON.stringify({from:fromV,to:toV}) : '');
+}
 function fpEntitySearch(pageKey, fieldKey, q){
   clearTimeout(_fpEntityTimer);
   const dd = document.getElementById(`fp-dd-${pageKey}-${fieldKey}`);
@@ -1930,6 +2058,14 @@ function recFilterFields(){
     {key:'fy', label:'Financial Year', type:'checkbox', options:(window._fyCache||[]).map(f=>({value:f.fy_id,label:f.fy_label}))},
     {key:'opinion', label:'Opinion', type:'checkbox', options:['Unmodified','Qualified','Adverse','Disclaimer','Emphasis of Matter'].map(v=>({value:v,label:v}))},
     {key:'rotation_status', label:'Rotation', type:'checkbox', options:[{value:'OK',label:'OK'},{value:'Approaching',label:'Approaching'},{value:'Due',label:'Due'},{value:'Overdue',label:'Overdue'}]},
+    // Placed last on purpose: it's a full-width row (grid-column:1/-1 in
+    // fpRenderField), so putting it after the three checkbox fields lets
+    // Financial Year / Opinion / Rotation sit side-by-side in one row above
+    // it instead of being pushed apart. Locked until a Financial Year above
+    // is selected — see fpRenderField's 'month-range' branch and
+    // fpRefreshDependents (called from the FY checkboxes' onchange), which
+    // enables/disables and clears this field.
+    {key:'reportEndDate', label:'Report End Date', type:'month-range', dependsOn:'fy'},
   ];
 }
 function recRenderFilterPanel(){
@@ -1976,7 +2112,7 @@ function memberSort(col){
 async function renderRecords(){
   const q=(document.getElementById('rec-q')?.value||'').trim();
   const tbody=document.getElementById('rec-tbody');
-  if(tbody) tbody.innerHTML='<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--i3)">Loading…</td></tr>';
+  if(tbody) tbody.innerHTML='<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--i3)">Loading…</td></tr>';
   recRenderFilterPanel();
 
   const params=new URLSearchParams({page:_recPage,limit:PAGE_SIZE});
@@ -1987,13 +2123,25 @@ async function renderRecords(){
   if(fv('company').length)         params.set('company_id', fv('company').join(','));
   if(fv('partner').length)         params.set('mem_no', fv('partner').join(','));
   if(fv('fy').length)              params.set('fy_id', fv('fy').join(','));
+  // Report End Date MONTH range (1-12, no year/day) — only ever set once a
+  // FY is selected (see recFilterFields' dependsOn:'fy'), stored as one
+  // JSON {from,to} value. Backend applies MONTH(report_end_date) BETWEEN
+  // from AND to across whichever FY(s) are already selected above.
+  const reRange = fv('reportEndDate')[0];
+  if (reRange) {
+    try {
+      const {from,to} = JSON.parse(reRange);
+      if (from) params.set('report_end_month_from', from);
+      if (to)   params.set('report_end_month_to', to);
+    } catch(e) {}
+  }
   if(fv('opinion').length)         params.set('opinion', fv('opinion').join(','));
   if(fv('rotation_status').length) params.set('rotation_status', fv('rotation_status').join(','));
   const sortMap={coName:'co_name', firmName:'fr_name', partnerName:'mem_name', reportEndDate:'report_end_date', signingDate:'signing_date'};
   if(_recSortCol && sortMap[_recSortCol]){ params.set('sort',sortMap[_recSortCol]); params.set('dir',_recSortDir===1?'asc':'desc'); }
 
   const res=await api('/appointments?'+params);
-  if(!res){ if(tbody) tbody.innerHTML='<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--i3)">Error loading records</td></tr>'; return; }
+  if(!res){ if(tbody) tbody.innerHTML='<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--i3)">Error loading records</td></tr>'; return; }
 
   let rows=res.data||res;
   _recTotal=res.total||rows.length;
@@ -2006,18 +2154,14 @@ async function renderRecords(){
   // Also refresh APPTS for local computations
   if(Array.isArray(rows)) APPTS=[...APPTS.filter(a=>!rows.find(r=>r.audit_rel_id===a.id)),...rows.map(mapAppt)];
 
-  const issues=computeIssues();
   if(tbody) tbody.innerHTML=rows.map(x=>{
     const coName=x.co_name||'—';
     const fName =x.fr_name||'—';
     const mName =x.mem_name||'—';
     const mMrn  =x.mem_no||'';
     const fReg  =x.fr_reg_no||'';
-    const mapped=mapAppt(x);
-    const xIssues=issues.filter(i=>i.apptId===mapped.id);
-    const dqCell=xIssues.length?`<span class="dq-score ${xIssues.some(i=>i.sev==='error')?'dq-c':'dq-b'}">${xIssues.some(i=>i.sev==='error')?'C':'B'}</span>`:'<span class="dq-score dq-a">A</span>';
     const coSub=[x.co_isin,x.co_bse_code?'BSE:'+x.co_bse_code:'',x.co_nse_symbol?'NSE:'+x.co_nse_symbol:''].filter(Boolean).join('/');
-    return`<tr onclick="openEditAppt('${x.audit_rel_id}')">
+    return`<tr onclick="openEditAppt('${x.audit_rel_id}','${x.report_type}')">
       <td style="cursor:pointer" onclick="event.stopPropagation();nav('company-detail',{coId:'${x.company_id}'})">
         <div class="co-cell">
           <div class="co-av" style="width:26px;height:26px;font-size:10px">${ini(coName)}</div>
@@ -2038,30 +2182,53 @@ async function renderRecords(){
         ${mMrn?`<div class="mono" style="font-size:11px;color:var(--i3);margin-top:1px">${mMrn}</div>`:''}
       </td>
       <td style="font-size:12.5px">${x.signing_date?fd(x.signing_date.slice(0,10)):'—'}</td>
-      <td>${dqCell}</td>
       <td><div class="row-acts">
-        <button class="btn btn-gh btn-xs" onclick="event.stopPropagation();openEditAppt('${x.audit_rel_id}')">Edit</button>
-        <button class="btn btn-gh btn-xs" onclick="event.stopPropagation();openCloneApptModal('${x.audit_rel_id}')">Clone</button>
+        <button class="btn btn-gh btn-xs" onclick="event.stopPropagation();openEditAppt('${x.audit_rel_id}','${x.report_type}')">Edit</button>
+        <button class="btn btn-gh btn-xs" onclick="event.stopPropagation();openCloneApptModal('${x.audit_rel_id}','${x.report_type}')">Clone</button>
       </div></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="8" style="padding:48px;text-align:center;color:var(--i3)">No records found</td></tr>`;
+  }).join('')||`<tr><td colspan="7" style="padding:48px;text-align:center;color:var(--i3)">No records found</td></tr>`;
 
   renderPager('rec-pager',_recPage,_recTotalPages,_recTotal,async(p)=>{_recPage=p;await renderRecords();});
 }
 
 // Called from company detail and audit records table Clone button
-async function openCloneApptModal(apptId) {
+// reportType is passed from whichever row's Clone button was clicked — see
+// the matching comment on openEditAppt above for why: one audit_rel_id can
+// be shared by both a Standalone and a Consolidated appointment, so without
+// this, cloning would pull in the other report type's auditors too (and
+// could false-flag them as "duplicate" since the clone form only submits
+// one report type at a time).
+async function openCloneApptModal(apptId,reportType) {
   // Fetch the full appointment record from the backend
-  let appt = APPTS.find(x=>x.id===apptId);
+  let appt = reportType
+    ? APPTS.find(x=>x.id===apptId && normaliseRtypeUI(x.rtype)===normaliseRtypeUI(reportType))
+    : APPTS.find(x=>x.id===apptId);
   if(!appt) {
     const raw = await api('/appointments/'+apptId);
     if(!raw){ toast('Could not load appointment','e'); return; }
     appt = mapAppt(raw);
   }
 
+  // Fetch every active auditor row for this record (not just the one seq
+  // fetched above) so cloning a multi-auditor report carries all of them
+  // forward, not just the first. The backend already excludes Removed rows
+  // by default, so this naturally only returns currently-active auditors.
+  let allRows=[];
+  try{
+    const raw=await api(`/appointments?audit_rel_id=${apptId}`);
+    allRows=Array.isArray(raw)?raw:(raw?.data||[]);
+    // Restrict to the report type being cloned — see the function comment above.
+    const rtFilter = normaliseRtypeUI(reportType || appt.rtype || '');
+    const sameType = allRows.filter(r=>normaliseRtypeUI(r.report_type||'')===rtFilter);
+    if(sameType.length) allRows = sameType;
+    allRows.sort((x,y)=>(x.seq_no||1)-(y.seq_no||1));
+  }catch(e){ allRows=[]; }
+  if(!allRows.length) allRows=[appt];
+
   // Open a NEW appointment modal (editId stays null = will POST)
   // preFY=false so FY dropdown is blank — user must select
-  const rt = normaliseRtypeUI(appt.rtype||'Annual Standalone');
+  const rt = normaliseRtypeUI(reportType || appt.rtype || 'Annual Standalone');
   editId = null;
   const rtShort = rt==='Annual Standalone'?'Standalone':'Consolidated';
   const fyForForm = false; // blank FY
@@ -2072,9 +2239,20 @@ async function openCloneApptModal(apptId) {
   ]);
 
   setTimeout(async()=>{
-    // Pre-fill company
+    // Pre-fill company. Use the record's own snapshot name/ISIN (reliable —
+    // came from the backend JOIN) rather than onMFCo()'s company cache
+    // lookup, which only holds whatever page of the company list was last
+    // loaded and can leave this blank for companies outside that page.
     document.getElementById('mf-co').value = appt.coId;
-    onMFCo(); // updates the company hint
+    const isinEl = document.getElementById('mf-isin');
+    const coHint = document.getElementById('mf-co-h');
+    if(isinEl) isinEl.value = appt.coName || '';
+    if(coHint){
+      if(appt.isin){
+        coHint.innerHTML = `✓ <span style="font-family:var(--mono);font-size:11px">${appt.isin}${appt.bseCode?' &nbsp;·&nbsp; BSE: '+appt.bseCode:''}</span>`;
+        coHint.className = 'fhint ok';
+      } else onMFCo(); // fall back to cache lookup if snapshot is missing
+    }
 
     // Pre-fill report type badge (hidden field)
     const rtHid = document.getElementById('mf-rtype');
@@ -2091,20 +2269,30 @@ async function openCloneApptModal(apptId) {
     // Signing date intentionally left blank — new appointment, new date
     dpSetValue('mf-date','');
 
-    // Pre-fill CA Firm and enable+fill Signing Partner
-    const blk = document.getElementById('ab-0');
-    if(blk){
-      const fReg = appt.firmReg || appt.fr_reg_no || appt.firmId || '';
-      const fName = appt.firmName || appt.fr_name || '';
-      blk.querySelector('.ab-firm-hid').value = appt.firmId;
-      blk.querySelector('.ab-firm-q').value   = fName || fReg;
-      const fHint = blk.querySelector('.ab-firm-hint');
-      if(fHint){ fHint.textContent = fReg ? 'Reg: '+fReg : ''; fHint.className='fhint ok'; }
-      // Enable partner input then populate
-      const mq = blk.querySelector('.ab-member-q');
-      if(mq){ mq.disabled=false; mq.placeholder='Type MRN or partner name…'; }
-      await mfLoadPartners(appt.firmId, 0);
-      await abSetMemberFromId(appt.memberId, 0);
+    // Render one auditor block per active row (block 0 already exists from apptForm)
+    const container = document.getElementById('ab-container');
+    for(let i=0;i<allRows.length;i++){
+      const mapped = mapAppt(allRows[i]);
+      if(i>0 && container){
+        container.insertAdjacentHTML('beforeend', abBlockHTML(i));
+      }
+      const blk = document.getElementById('ab-'+i);
+      if(blk){
+        const fReg = mapped.firmReg || mapped.firmId || '';
+        const fName = mapped.firmName || '';
+        blk.querySelector('.ab-firm-hid').value = mapped.firmId;
+        blk.querySelector('.ab-firm-q').value   = fName || fReg;
+        const fHint = blk.querySelector('.ab-firm-hint');
+        if(fHint){ fHint.textContent = fReg ? 'Reg: '+fReg : ''; fHint.className='fhint ok'; }
+        const mq = blk.querySelector('.ab-member-q');
+        if(mq){ mq.disabled=false; mq.placeholder='Type MRN or partner name…'; }
+        try{
+          await mfLoadPartners(mapped.firmId, i);
+          await abSetMemberFromId(mapped.memberId, i);
+        }catch(e){
+          console.error(`Failed to populate cloned auditor block ${i}:`, e);
+        }
+      }
     }
   }, 200);
 }
@@ -2297,7 +2485,7 @@ async function renderFirmDetail(firmId){
   const _fObj = FIRMS[firmId];
   const frRegNo = (_fObj?.reg) || firmId;
   try {
-  // FIX #5: Fetch partners directly via members API (uses MFR join), not via relationships endpoint
+  // Fetch partners directly via the members API (uses the MFR join) rather than the relationships endpoint
   const [firmData, appts, partnerRes, prRes] = await Promise.all([
     api('/firms/'+encodeURIComponent(frRegNo)),
     api('/appointments?fr_reg_no='+encodeURIComponent(frRegNo)),
@@ -2614,7 +2802,13 @@ function _memberSigningHistoryHTML(all){
   </div>`;
 }
 
-/* APPOINTMENT MODAL */
+/* APPOINTMENT MODAL — create/edit/clone flow for audit appointments.
+   openApptModal = blank "New Appointment" form.
+   openEditAppt/_openEditApptWithData = load an existing audit_rel_id and
+     render one auditor block per co-signing-auditor seq row.
+   openCloneApptModal (below, in the RECORDS section) = duplicate an
+     appointment into a new blank one, pre-filled but not yet saved.
+   submitAppt = POST/PUT to /appointments on Save. */
 function openApptModal(preCoId,preFY,preRtype){
   editId=null;
   const rt = preRtype || 'Annual Standalone';
@@ -2630,24 +2824,40 @@ function openApptModal(preCoId,preFY,preRtype){
 }
 
 
-async function openEditAppt(id){
+// reportType is passed from whichever row's Edit button was clicked, so
+// that if this audit_rel_id happens to be shared by both a Standalone and a
+// Consolidated appointment (POST reuses the same audit_rel_id for same
+// company+FY regardless of report type — see appointments.js), the edit
+// form only shows the auditor rows for the one the user actually clicked.
+async function openEditAppt(id,reportType){
   editId=id;
-  // Try APPTS cache first; if not found (came from detail page), fetch from API
-  let a=APPTS.find(x=>x.id===id);
+  // Try APPTS cache first; if not found (came from detail page), fetch from API.
+  // When reportType is known, prefer a cached row that actually matches it —
+  // .id is shared across report types, so an unqualified match could pick
+  // the wrong one's data for the company/FY/rtype prefill below.
+  let a = reportType
+    ? APPTS.find(x=>x.id===id && normaliseRtypeUI(x.rtype)===normaliseRtypeUI(reportType))
+    : APPTS.find(x=>x.id===id);
   if(!a){
     const raw=await api(`/appointments/${id}`);
     if(!raw)return;
     a=mapAppt(raw);
   }
-  await _openEditApptWithData(id,a);
+  await _openEditApptWithData(id,a,reportType);
 }
-async function _openEditApptWithData(id,a){
+async function _openEditApptWithData(id,a,reportType){
   editId=id;
   // Fetch ALL seq rows for this audit_rel_id from backend
   let allRows=[];
   try{
     const raw=await api(`/appointments?audit_rel_id=${id}`);
     allRows=Array.isArray(raw)?raw:(raw?.data||[]);
+    // See openEditAppt's comment above — restrict to just the report type
+    // being edited so a shared audit_rel_id never mixes Standalone and
+    // Consolidated auditors into the same edit form.
+    const rt = normaliseRtypeUI(reportType || a.rtype || '');
+    const sameType = allRows.filter(r=>normaliseRtypeUI(r.report_type||'')===rt);
+    if(sameType.length) allRows = sameType;
     // Sort by seq_no so blocks appear in order
     allRows.sort((x,y)=>(x.seq_no||1)-(y.seq_no||1));
   }catch(e){ allRows=[]; }
@@ -2689,7 +2899,13 @@ async function _openEditApptWithData(id,a){
         if(sel) sel.value = initSt;
         if(initSt==='Removed') container.querySelector('.ab-block').style.opacity='0.45';
       }
-      await _populateAuditorBlock(i, mapped);
+      // Defensive: a data issue on one auditor row (e.g. a stale firm/member
+      // reference) must not silently abort population of the remaining rows.
+      try{
+        await _populateAuditorBlock(i, mapped);
+      }catch(e){
+        console.error(`Failed to populate auditor block ${i} (seq_no=${row.seq_no}, audit_rel_id=${id}):`, e);
+      }
     }
     window._abPopulating = false;
   },150);
@@ -2747,10 +2963,14 @@ function apptForm(a,preCoId,preFY,preRtype){
     ? normaliseRtypeUI(preRtype)
     : (a?.rtype ? normaliseRtypeUI(a.rtype) : 'Annual Standalone');
   const rtLabel = rtValue === 'Annual Standalone' ? 'Annual — Standalone' : 'Annual — Consolidated';
+  // Prefer the record's own snapshot fields (from the backend JOIN, always
+  // reliable) over the small client-side company cache, which only ever
+  // holds whichever page of the company list was last loaded and can miss
+  // for companies not on that page — leaving these fields blank otherwise.
   const preCoObj = preCoId ? gC(preCoId) : null;
-  const preCoName  = preCoObj ? preCoObj.name    : (a ? (gC(a.coId)?.name   ||'') : '');
-  const preIsin    = preCoObj ? preCoObj.isin    : (a ? (gC(a.coId)?.isin   ||'') : '');
-  const preBseCode = preCoObj ? preCoObj.bseCode : (a ? (gC(a.coId)?.bseCode||'') : '');
+  const preCoName  = a?.coName  || preCoObj?.name    || '';
+  const preIsin    = a?.isin    || preCoObj?.isin    || '';
+  const preBseCode = a?.bseCode || preCoObj?.bseCode || '';
   const endDateVal   = a?.report_end_date   ? a.report_end_date.slice(0,10)   : '';
   const startDateVal = a?.report_start_date ? a.report_start_date.slice(0,10) : '';
   return`<div class="fgrid">
@@ -3116,6 +3336,12 @@ async function mfLoadPartners(fid,idx=0){}
 
 /* ════════ CRUD — API-BACKED SAVE FUNCTIONS ════════ */
 
+// Called by the appointment modal's Save button (both new and edit forms).
+// New: reads every rendered .ab-block (one per co-signing auditor) and
+// fires one POST /appointments per firm+partner pair. Edit: fires one
+// PUT /appointments/:id per block instead (each seq row is updated
+// independently). Blocks duplicate firm+partner pairs client-side before
+// hitting the API.
 async function submitAppt(forceSt) {
   const coId = document.getElementById('mf-co').value;
   if (!coId) { showError('Company Required', 'Please select a company before saving.'); return; }
@@ -3211,6 +3437,9 @@ async function submitAppt(forceSt) {
   } finally { _saving = false; }
 }
 
+// Called from the Delete button on an appointment's detail/edit view.
+// Fires DELETE /appointments/:id, then refreshes the in-memory APPTS list
+// and whatever screen is currently visible.
 async function delAppt(id) {
   if (!confirm('Delete this appointment?')) return;
   _saving = true;
@@ -3225,7 +3454,9 @@ async function delAppt(id) {
   } finally { _saving = false; }
 }
 
-/* ── Firm CRUD ── */
+/* ── Firm CRUD ── openFirmModal builds the Add/Edit CA Firm form (name +
+   reg. no. become readonly once a firm exists); saveFirm below sends the
+   POST/PUT to /firms. */
 function openFirmModal(firmId) {
   const f = firmId ? gF(firmId) : null;
   showModal(f?'Edit CA Firm':'Add CA Firm',`<div class="fgrid">
@@ -3314,7 +3545,7 @@ function openMemberModal(memberId, prefirmId) {
   const fcaLocked = qual !== 'FCA';
   showModal(m?'Edit CA Member':'Add CA Member',`<div class="fgrid">
     <div class="fg full"><label class="fl">Full Name <span class="req">*</span>${m?'<span style="font-size:10px;color:var(--i3);font-weight:400"> (cannot change)</span>':''}</label><input class="fc" id="mf2-name" value="${m?.name||''}" ${m?'readonly style="background:var(--s2);color:var(--i3);cursor:not-allowed"':''}></div>
-    <div class="fg"><label class="fl">MRN (Membership No.) <span class="req">*</span>${m?'<span style="font-size:10px;color:var(--i3);font-weight:400"> (cannot change)</span>':''}</label><input class="fc" id="mf2-mrn" value="${m?.mrn||''}" ${m?'readonly style="background:var(--s2);color:var(--i3);cursor:not-allowed"':''}></div>
+    <div class="fg"><label class="fl">MRN (Membership No.) <span class="req">*</span>${m?'<span style="font-size:10px;color:var(--i3);font-weight:400"> (cannot change)</span>':''}</label><input class="fc" id="mf2-mrn" maxlength="10" value="${m?.mrn||''}" ${m?'readonly style="background:var(--s2);color:var(--i3);cursor:not-allowed"':''}></div>
     <div class="fg"><label class="fl">City</label><input class="fc" id="mf2-city" value="${m?.city||''}"></div>
     <div class="fg"><label class="fl">Qualification</label><select class="fc" id="mf2-qual" onchange="mf2QualChange()"><option value="ACA"${qual==='ACA'?' selected':''}>ACA</option><option value="FCA"${qual==='FCA'?' selected':''}>FCA</option></select></div>
     <div class="fg"><label class="fl">ACA Year</label><input class="fc" id="mf2-aca" value="${acaYear}" placeholder="e.g. 1999" oninput="mf2AcaChange()"></div>
@@ -4044,6 +4275,11 @@ let sseSource = null;
 let _saving = false; // set true during save operations to skip redundant SSE reload
 let _sseReloadTimer = null; // debounce SSE-triggered reloads
 
+// Opens the live-update connection to GET /api/events (see backend
+// events.js). Called once on page load. Whenever ANY open tab/user saves a
+// change, the backend broadcasts an event here and this tab silently
+// re-fetches just the affected list + re-renders, so every open tab stays
+// in sync without a manual refresh. Auto-reconnects 5s after a drop.
 function connectSSE() {
   if (sseSource) sseSource.close();
   sseSource = new EventSource(API + '/events', { withCredentials: true });
@@ -4265,6 +4501,12 @@ function importData() {
         <div id="imp-stats" style="font-size:13px;margin-bottom:8px;color:var(--i2)"></div>
         <div id="imp-errors" style="font-size:12px;color:#ef4444;max-height:100px;overflow-y:auto"></div>
       </div>
+      <div id="imp-progress-wrap" style="display:none">
+        <div style="font-size:12.5px;color:var(--i2);margin-bottom:6px" id="imp-progress-text">Importing…</div>
+        <div style="background:var(--s2);border-radius:6px;height:10px;overflow:hidden">
+          <div id="imp-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s"></div>
+        </div>
+      </div>
     </div>
   `, [
     {lbl:'Cancel', cls:'btn-se', fn:'closeMD()'},
@@ -4318,17 +4560,47 @@ function previewImport() {
   reader.readAsText(file);
 }
 
+// Large files (tens of thousands of rows) are submitted to the bulk import
+// endpoint in fixed-size batches rather than one giant request — each batch
+// stays fast and well within request-size/rate limits, and the whole import
+// keeps going even if one batch errors out, instead of failing all-or-nothing.
+const IMPORT_CHUNK_SIZE = 500;
+
 async function submitImport() {
   if (!_importRows.length) { toast('No valid rows to import','w'); return; }
-  toast(`Importing ${_importRows.length} records…`,'i');
-  try {
-    const res = await api('/appointments/import', 'POST', { rows: _importRows });
-    await loadAllAppts(); renderRecords();
-    showImportResults('Audit Records', {
-      inserted: res.inserted, updated: res.updated,
-      dupErrors: _importDupErrors, submitErrors: res.errors||[],
-    });
-  } catch(e) { toast('Import failed: '+e.message,'e'); }
+  const total = _importRows.length;
+  const chunks = [];
+  for (let i=0; i<total; i+=IMPORT_CHUNK_SIZE) chunks.push(_importRows.slice(i, i+IMPORT_CHUNK_SIZE));
+
+  const progWrap = document.getElementById('imp-progress-wrap');
+  const progBar  = document.getElementById('imp-progress-bar');
+  const progText = document.getElementById('imp-progress-text');
+  if (progWrap) progWrap.style.display = 'block';
+
+  let inserted=0, updated=0, skipped=0, processed=0;
+  const allErrors = [];
+
+  for (let c=0; c<chunks.length; c++) {
+    if (progText) progText.textContent = `Importing batch ${c+1} of ${chunks.length}… (${processed.toLocaleString()}/${total.toLocaleString()} rows)`;
+    try {
+      const res = await api('/appointments/import', 'POST', { rows: chunks[c] });
+      inserted += res.inserted||0;
+      updated  += res.updated||0;
+      skipped  += res.skipped||0;
+      if (res.errors && res.errors.length) allErrors.push(...res.errors);
+    } catch(e) {
+      allErrors.push(`Batch ${c+1} (rows ${processed+1}-${processed+chunks[c].length}): ${e.message||'request failed'}`);
+    }
+    processed += chunks[c].length;
+    if (progBar) progBar.style.width = Math.round(processed/total*100) + '%';
+  }
+
+  if (progWrap) progWrap.style.display = 'none';
+  await loadAllAppts(); renderRecords();
+  showImportResults('Audit Records', {
+    inserted, updated,
+    dupErrors: _importDupErrors, submitErrors: allErrors,
+  });
 }
 
 /* ══════════ FIRMS IMPORT ══════════ */
@@ -4576,7 +4848,13 @@ function toast(msg,type='s'){
   t.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;stroke:currentColor">${icons[type]}</svg><span>${msg}</span>`;
   document.getElementById('tarea').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(10px)'},3200);setTimeout(()=>t.remove(),3700);
 }
-/* ══════════ CUSTOM DATE PICKER ══════════ */
+/* ══════════ CUSTOM DATE PICKER ══════════
+   Self-contained widget used by every date field in every form (appointment
+   dates, DOB, partner from/to dates, etc.) — always renders/accepts
+   DD/MM/YYYY only. Usage: call dpInput(id, value) to get the HTML for a
+   field, dpSetValue(id, value) to set it programmatically, dpSetDis(id,
+   bool) to enable/disable it. dpOpen/dpClose/dpRender/dpNav/dpSel drive the
+   popup calendar; dpTextBlur/_dpParseTyped validate manually-typed text. */
 let _dp={target:null,y:0,m:0};
 
 function dpInput(id,val,opts){
@@ -4722,8 +5000,6 @@ dpInit();
 
 /* INIT */
 renderDash();
-
-/* INIT */
 (async function init() {
   await loadAll();
   connectSSE();
@@ -4731,3 +5007,4 @@ renderDash();
 </script>
 </body>
 </html>
+
