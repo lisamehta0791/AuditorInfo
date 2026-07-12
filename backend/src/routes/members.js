@@ -1,3 +1,9 @@
+// Routes for /api/members — two related entities live in this one file:
+//   1. CA Members (ma_member) — the individual partner/signing-member master.
+//   2. Partner Records (fat_member_firm_rel, "MFR") — the join table linking
+//      a member to a firm over time (designation, from/to dates, active flag).
+// A member can have many MFR rows across their career (job changes); at
+// most one is "current" (active_flag='Active') per firm at a time.
 const router = require('express').Router();
 const db     = require('../config/db');
 const { broadcast } = require('../events');
@@ -17,6 +23,9 @@ async function nextMemberId() {
   return 'MEM' + String(Number(maxId)+1);
 }
 
+// GET /api/members — paginated list of CA Members, used by the CA Members
+// screen and every "partner" search field. Excludes Inactive/Expired/Not-a-
+// Member members by default unless ?include_inactive= or ?status= is given.
 router.get('/', async (req, res) => {
   try {
     const { search='', include_inactive='' } = req.query;
@@ -78,6 +87,11 @@ router.get('/', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/members/relationships — lightweight active-only partner list
+// (mfr_id/mem_no/fr_reg_no/designation/firm name only, no pagination, no
+// master-table joins beyond firm name) used by the UI wherever it needs a
+// quick firm↔member relationship lookup rather than the full paginated
+// Partner Records view below.
 router.get('/relationships', async (req, res) => {
   try {
     // Lightweight lookup used by the UI for firm-member dropdowns.
@@ -204,6 +218,9 @@ router.get('/partner-records', async (req, res) => {
   } catch(e) { console.error('[partner-records] error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/members/:id — single member by MRN or member_id, plus their
+// full firm-relationship history (not just the current one). Used by the
+// Member Detail page.
 router.get('/:id', async (req, res) => {
   try {
     const [[member]] = await db.query(`
@@ -229,6 +246,9 @@ router.get('/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/members — create a new CA Member. Generates the next
+// sequential member_id itself (MEM137501, ...); mem_no (MRN) is the
+// user-supplied ICAI membership number and is the real business key.
 router.post('/', async (req, res) => {
   try {
     let { mem_name, mem_no, mem_city, mem_designation='Partner', mem_qualification='ACA',
@@ -257,6 +277,7 @@ router.post('/', async (req, res) => {
 
     const member_id = await nextMemberId();
 
+    // INSERT: the new member row
     await db.query(`
       INSERT INTO ma_member
         (member_id, mem_name, mem_no, mem_city, mem_designation, mem_qualification,
@@ -272,6 +293,7 @@ router.post('/', async (req, res) => {
       ? req.body.firm_reg_nos : (firmRow ? [current_firm_reg_no] : []);
     for (const regNo of allFirmRegs) {
       const mfr_id = await nextMfrId();
+      // INSERT: link this new member to the supplied firm(s) (import path only)
       await db.query(`
         INSERT IGNORE INTO fat_member_firm_rel
           (mfr_id, member_id, firm_id, mem_no, fr_reg_no, designation, from_date, active_flag)
@@ -288,6 +310,11 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/members/:id — edit an existing member. When status is switched
+// to Inactive/Expired/Not a Member, also cascades: closes out their active
+// firm relationship(s), and attempts to mark their active audit records
+// inactive too (see bug note below). If current_firm_reg_no changes, also
+// closes the old firm relationship and opens/reactivates one for the new firm.
 router.put('/:id', async (req, res) => {
   try {
     let { mem_name, mem_no, mem_city, mem_designation, mem_qualification,
@@ -311,6 +338,7 @@ router.put('/:id', async (req, res) => {
     if (mem_qualification && mem_qualification !== 'FCA') fca_year = null;
 
     const validStatus = ['Active','Inactive','Not a Member','Expired'].includes(mem_status) ? mem_status : 'Active';
+    // UPDATE: the member row itself
     await db.query(`
       UPDATE ma_member SET
         mem_name=?, mem_no=?, mem_city=?, mem_designation=?, mem_qualification=?,
@@ -322,10 +350,16 @@ router.put('/:id', async (req, res) => {
         mem_email||null, mem_phone||null, validStatus, currentMemNo]);
 
     if (['Inactive','Expired','Not a Member'].includes(validStatus)) {
+      // KNOWN BUG: same issue as companies.js and firms.js — record_status is
+      // ENUM('Active','Removed'), so 'Inactive' is not a legal value and this
+      // UPDATE throws "Data truncated for column 'record_status'", failing the
+      // whole request whenever the member has active audit records. Confirmed
+      // by testing against the live schema. Not fixed yet.
       await db.query(
         `UPDATE fat_company_audit_rel SET record_status='Inactive'
          WHERE mem_no=? AND record_status='Active'`,
         [mem_no||currentMemNo]);
+      // UPDATE: close out this member's active firm relationship(s)
       await db.query(
         `UPDATE fat_member_firm_rel SET active_flag='Inactive', to_date=CURDATE()
          WHERE mem_no=? AND active_flag='Active'`,
@@ -378,6 +412,7 @@ router.patch('/firm-inactive', async (req, res) => {
     const { mem_no, fr_reg_no } = req.body;
     if (!mem_no || !fr_reg_no)
       return res.status(400).json({ error: 'mem_no and fr_reg_no required' });
+    // UPDATE: deactivate this one member-firm relationship row
     await db.query(
       `UPDATE fat_member_firm_rel SET active_flag='Inactive', to_date=CURDATE()
        WHERE mem_no=? AND fr_reg_no=? AND active_flag='Active'`,
@@ -411,6 +446,7 @@ router.post('/partner-records', async (req, res) => {
     const resolvedToDate = flag === 'Inactive' ? (to_date || new Date().toISOString().slice(0,10)) : null;
 
     const mfr_id = await nextMfrId();
+    // INSERT: the new firm-member relationship (partner record) row
     await db.query(`
       INSERT INTO fat_member_firm_rel
         (mfr_id, member_id, firm_id, mem_no, fr_reg_no, designation,
@@ -437,6 +473,7 @@ router.put('/partner-records/:mfr_id', async (req, res) => {
     const flag = (active_flag === 'Active') ? 'Active' : 'Inactive';
     // When deactivating: use the explicit to_date if supplied, otherwise keep an
     // existing one, otherwise stamp today. When reactivating, always clear it.
+    // UPDATE: the partner record row (designation/dates/status)
     await db.query(`
       UPDATE fat_member_firm_rel SET
         designation = COALESCE(?, designation),
