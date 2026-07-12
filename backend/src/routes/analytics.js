@@ -1,7 +1,15 @@
+// Routes for /api/analytics — all read-only aggregate/reporting queries
+// (no INSERT/UPDATE in this file). Powers the Dashboard and Analytics
+// screens: summary counts, top firms, sector distribution, market share,
+// and the firm x financial-year appointment heatmap.
 const router = require('express').Router();
 const db     = require('../config/db');
 const auth   = require('../middleware/auth');
 
+// GET /api/analytics/dashboard?fy_id= — summary numbers for the Dashboard
+// screen: total/confirmed/draft company counts, engaged-firm count, total
+// appointments, top 5 firms by appointment count, sector distribution, and
+// open DQ issue counts — all scoped to one financial year.
 router.get('/dashboard', auth, async (req, res) => {
   try {
     const { fy_id } = req.query;
@@ -48,6 +56,9 @@ router.get('/dashboard', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/analytics/market-share?fy_id= — each firm's share of total
+// appointments for one FY, sourced from the DB view v_firm_fy_market_share.
+// Used by the Analytics screen's market-share chart.
 router.get('/market-share', auth, async (req, res) => {
   try {
     const { fy_id } = req.query;
@@ -59,6 +70,14 @@ router.get('/market-share', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/analytics/heatmap — raw firm x financial-year appointment counts
+// across ALL years (not scoped to one fy_id). This is the data source for
+// the "10-Year Appointment Trend by Firm" table on the Analytics screen;
+// the frontend groups these rows by firm NAME (not firm_id) client-side —
+// see the renderAnalytics() heatmap section in frontend/index.html — because
+// the same firm can appear under more than one fr_reg_no/firm_id over time
+// (e.g. branch registrations), and grouping by name is what makes firms
+// with multiple registration numbers show as one consolidated row.
 router.get('/heatmap', auth, async (req, res) => {
   try {
     const [rows] = await db.query(`

@@ -1,9 +1,15 @@
+// Routes for /api/companies — the listed-company master (ma_company).
+// Covers list/search/filter with pagination, single-company lookup, create,
+// and edit. Powers the Companies screen and every "search company" input
+// used when creating/editing an audit appointment.
 const router = require('express').Router();
 const db     = require('../config/db');
 const auth   = require('../middleware/auth');
 const { broadcast } = require('../events');
 const { toList, inClause } = require('../utils');
 
+// GET /api/companies — paginated list, used by the Companies screen and by
+// the entity-search dropdown ("Search Company" field) on the appointment form.
 router.get('/', auth, async (req, res) => {
   try {
     const { search='' } = req.query;
@@ -51,6 +57,8 @@ router.get('/', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/companies/:id — single company by company_id, used by the
+// Company Detail page and the Edit Company modal.
 router.get('/:id', auth, async (req, res) => {
   try {
     const [[company]] = await db.query(`
@@ -64,6 +72,9 @@ router.get('/:id', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/companies — create a new listed company. Generates the next
+// sequential company_id (CO000001, CO000002, ...) itself rather than
+// relying on auto-increment, since the ID needs the "CO" prefix.
 router.post('/', auth, async (req, res) => {
   try {
     const { co_name, co_cin, co_isin, co_bse_code, co_nse_symbol,
@@ -75,6 +86,7 @@ router.post('/', auth, async (req, res) => {
       `SELECT COALESCE(MAX(CAST(SUBSTRING(company_id,3) AS UNSIGNED)),0) AS maxId FROM ma_company`);
     const company_id = 'CO' + String(Number(maxId) + 1).padStart(6, '0');
 
+    // INSERT: the new company row
     await db.query(`
       INSERT INTO ma_company
         (company_id, co_name, co_cin, co_isin, co_bse_code, co_nse_symbol,
@@ -92,10 +104,12 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// PUT /api/companies/:id — edit an existing company's master data.
 router.put('/:id', auth, async (req, res) => {
   try {
     const { co_name, co_cin, co_isin, co_bse_code, co_nse_symbol,
             co_part_of, co_pan, co_roc, co_exchange_display, sector_id, co_status } = req.body;
+    // UPDATE: the company row itself
     await db.query(`
       UPDATE ma_company SET
         co_name=?, co_cin=?, co_isin=?, co_bse_code=?, co_nse_symbol=?,
@@ -105,7 +119,13 @@ router.put('/:id', auth, async (req, res) => {
         co_part_of||null, co_pan||null, co_roc||null, co_exchange_display||null,
         sector_id||null, co_status||'Active', req.params.id]);
 
-    // Cascade: if company marked Inactive, set all its audit records to Inactive
+    // Cascade: if company marked Inactive, set all its audit records to Inactive.
+    // KNOWN BUG: fat_company_audit_rel.record_status is ENUM('Active','Removed')
+    // — 'Inactive' is not a valid value for that column, so this UPDATE throws
+    // "Data truncated for column 'record_status'" and the whole request fails
+    // with a 500 whenever a company with active audit records is set Inactive.
+    // Confirmed by testing against the live schema. Not fixed yet — most likely
+    // fix is to cascade to 'Removed' instead of 'Inactive' below.
     if (co_status === 'Inactive') {
       await db.query(
         `UPDATE fat_company_audit_rel SET record_status='Inactive'

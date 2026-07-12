@@ -1,10 +1,20 @@
+// Routes for /api/appointments — the audit appointment register
+// (fat_company_audit_rel: one row per co-signing auditor on a company's
+// report for a given financial year). Covers list/search/filter, single-row
+// lookup, create, edit, soft-delete ("Remove"), hard delete, and bulk CSV
+// import. Also raises rotation-limit alerts (log_alert) and data-quality
+// issues (log_dq_issue) as a side effect of create/edit/import.
 const router = require('express').Router();
 const db     = require('../config/db');
 const { broadcast } = require('../events');
 const { toList, inClause } = require('../utils');
 
+// Strips the "—" the frontend inserts for display (e.g. "Annual — Standalone")
+// back down to the plain enum value stored in the DB ("Annual Standalone").
 function normaliseRtype(r) { return (r||'').replace(/\s*—\s*/g,' ').trim(); }
 
+// Data-quality grade for one appointment row: A = complete, B = missing an
+// expected field, C = a hard rule violation (tenure over the 10-year cap).
 function computeDQ(d) {
   if ((d.tenure_years||0) > 10)                              return 'C';
   if (!d.signing_date)                                       return 'B';
@@ -13,6 +23,7 @@ function computeDQ(d) {
   return 'A';
 }
 
+// Auditor rotation status against the Companies Act 5-year tenure limit.
 function rotStatus(yr) {
   const y = parseInt(yr)||0;
   if (y > 5)  return 'Overdue';
@@ -21,6 +32,13 @@ function rotStatus(yr) {
   return 'OK';
 }
 
+// GET /api/appointments — the main list endpoint. Powers the Audit Records
+// screen, Signing History, and every company/firm/member detail page's
+// appointment table. Supports pagination (page+limit), free-text search,
+// and multi-select filters on company/FY/firm/member/status/opinion/report
+// type/rotation status/designation. Without page+limit it returns an
+// unpaginated array capped at 5000 rows (used by screens that need the
+// full working set client-side, e.g. Analytics/Dashboard).
 router.get('/', async (req, res) => {
   try {
     const { sort='', dir='' } = req.query;
@@ -35,7 +53,7 @@ router.get('/', async (req, res) => {
     const params = [];
     let where = 'WHERE 1=1';
     if (audit_rel_id_filter) { where += ' AND f.audit_rel_id=?'; params.push(audit_rel_id_filter); }
-    // Multi-select filters: company_id=CO1,CO2 / fy_id=1,2 / status=Active,Inactive / opinion=.../designation=...
+    // Multi-select filters: company_id=CO1,CO2 / fy_id=1,2 / status=Active,Removed / opinion=.../designation=...
     where += inClause('f.company_id',      toList(req.query.company_id), params);
     where += inClause('f.fy_id',           toList(req.query.fy_id),      params);
     where += inClause('f.fr_reg_no',       fr_reg_noList, params);
@@ -51,6 +69,18 @@ router.get('/', async (req, res) => {
     where += inClause('f.report_type',     toList(req.query.report_type), params);
     where += inClause('f.rotation_status', toList(req.query.rotation_status), params);
     where += inClause('mm.mem_designation', designationList, params);
+    // Report End Date MONTH range (1-12, e.g. 4=April) — no year/day, since
+    // the frontend only exposes this once a fy_id filter is also set (see
+    // index.html's recFilterFields/fpRenderField 'month-range' branch), and
+    // applies it across every FY selected there. from > to means the range
+    // wraps across the calendar year (e.g. 11 to 2 = Nov, Dec, Jan, Feb).
+    const monthFrom = parseInt(req.query.report_end_month_from, 10);
+    const monthTo   = parseInt(req.query.report_end_month_to, 10);
+    if (monthFrom && monthTo) {
+      if (monthFrom <= monthTo) { where += ' AND MONTH(f.report_end_date) BETWEEN ? AND ?'; params.push(monthFrom, monthTo); }
+      else { where += ' AND (MONTH(f.report_end_date) >= ? OR MONTH(f.report_end_date) <= ?)'; params.push(monthFrom, monthTo); }
+    } else if (monthFrom) { where += ' AND MONTH(f.report_end_date) >= ?'; params.push(monthFrom); }
+    else if (monthTo)     { where += ' AND MONTH(f.report_end_date) <= ?'; params.push(monthTo); }
     if (search) {
       where += ' AND (fm.fr_name LIKE ? OR mm.mem_name LIKE ? OR cm.co_name LIKE ?)';
       params.push(`%${search}%`,`%${search}%`,`%${search}%`);
@@ -125,6 +155,10 @@ router.get('/', async (req, res) => {
   } catch(e) { console.error('[appointments] error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/appointments/:id — a single appointment by audit_rel_id, used
+// when the frontend needs one representative row's details (e.g. opening
+// the Clone modal). Returns only seq_no 1 if the record has multiple
+// co-auditors — for every seq_no row, call GET / with ?audit_rel_id=.
 router.get('/:id', async (req, res) => {
   try {
     const [[row]] = await db.query(`
@@ -141,6 +175,13 @@ router.get('/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/appointments — create a new appointment (one auditor on one
+// company/FY/report). Called when saving "New Standalone"/"New
+// Consolidated" and when adding a co-auditor to an existing report. If a
+// row already exists for the same company+FY, the new auditor is appended
+// as the next seq_no under that same audit_rel_id instead of a new one.
+// Also raises a rotation alert (INSERT INTO log_alert) if tenure is at or
+// past the 5-year limit, and data-quality issues via generateDQ().
 router.post('/', async (req, res) => {
   try {
     const { company_id, fy_id,
@@ -172,14 +213,18 @@ router.post('/', async (req, res) => {
     const rot = rotStatus(tenure_years);
     const dq  = computeDQ({ signing_date, audit_opinion, tenure_years, record_status });
 
-    // Reuse existing audit_rel_id for same company+FY, or create new
+    // Reuse existing audit_rel_id for same company+FY+report_type, or create
+    // new. report_type MUST be part of this match — Standalone and
+    // Consolidated are edited/cloned as separate reports in the frontend, so
+    // merging them under one audit_rel_id here would let one report's
+    // auditors leak into the other's edit/clone form.
     const [[existing]] = await db.query(
       `SELECT audit_rel_id, MAX(seq_no) AS max_seq
        FROM fat_company_audit_rel
-       WHERE company_id=? AND fy_id=?
+       WHERE company_id=? AND fy_id=? AND report_type=?
        GROUP BY audit_rel_id
        LIMIT 1`,
-      [company_id, fy_id]);
+      [company_id, fy_id, rtype]);
 
     let audit_rel_id, seq_no;
     if (existing && existing.audit_rel_id) {
@@ -193,6 +238,7 @@ router.post('/', async (req, res) => {
       seq_no = 1;
     }
 
+    // INSERT: the actual appointment row (one auditor on one company/FY/report)
     await db.query(`
       INSERT INTO fat_company_audit_rel
         (audit_rel_id, seq_no, company_id, fy_id, fr_reg_no, mem_no, report_type,
@@ -208,6 +254,7 @@ router.post('/', async (req, res) => {
         report_start_date||null, report_end_date||null]);
 
     if (rot !== 'OK') {
+      // INSERT: rotation-limit alert (only when tenure is Approaching/Due/Overdue)
       await db.query(`
         INSERT INTO log_alert
           (alert_type,company_id,firm_id,member_id,fy_id,audit_rel_id,tenure_years,regulatory_limit,alert_message)
@@ -216,12 +263,18 @@ router.post('/', async (req, res) => {
           company_id, fr_reg_no, mem_no, fy_id, audit_rel_id, tenure_years, 5,
           `${co.co_name}: ${fm.fr_name} tenure ${tenure_years}yr (limit 5)`]);
     }
-    await generateDQ(db, audit_rel_id, company_id, fy_id, req.body);
-    broadcast('appointment_added', { audit_rel_id, seq_no, company_id, fy_id });
+    await generateDQ(db, audit_rel_id, company_id, fy_id, req.body); // INSERTs any log_dq_issue rows for this appointment
+    broadcast('appointment_added', { audit_rel_id, seq_no, company_id, fy_id }); // pushes an SSE event so other open tabs refresh
     res.status(201).json({ audit_rel_id, seq_no });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// PUT /api/appointments/:id — edit an existing appointment. Pass seq_no to
+// target one specific co-auditor row; without it, every seq_no under this
+// audit_rel_id is updated (used for fields shared across all auditors on
+// the same report, e.g. dates/fees). Re-derives dq_status and
+// rotation_status on every save, clears old open DQ issues/rotation alerts
+// and re-raises them via generateDQ() / the log_alert INSERT below.
 router.put('/:id', async (req, res) => {
   try {
     const { report_type, auditor_role, audit_opinion, signing_date,
@@ -259,6 +312,7 @@ router.put('/:id', async (req, res) => {
     setClauses.push('report_start_date=?');  setParams.push(report_start_date||null);
     setClauses.push('report_end_date=?');    setParams.push(report_end_date||null);
 
+    // UPDATE: the appointment row(s) — every column above is rebuilt into one SET clause
     await db.query(
       `UPDATE fat_company_audit_rel SET ${setClauses.join(', ')} WHERE audit_rel_id=? ${whereSeq}`,
       [...setParams, req.params.id, ...seqParams]);
@@ -268,9 +322,19 @@ router.put('/:id', async (req, res) => {
       [req.params.id]);
     if (!appt) return res.status(404).json({ error: 'Not found' });
 
+    // Recompute data-quality issues from scratch: clear the old open ones,
+    // then re-derive fresh ones for EVERY auditor row still on this record
+    // (not just the one just saved) — otherwise saving one auditor's row
+    // wipes the other auditors' warnings without putting new ones back.
     await db.query(`DELETE FROM log_dq_issue WHERE audit_rel_id=? AND status='open'`, [req.params.id]);
-    await generateDQ(db, req.params.id, appt.company_id, appt.fy_id, req.body);
+    const [allRowsForDQ] = await db.query(
+      'SELECT signing_date, audit_opinion, tenure_years, record_status FROM fat_company_audit_rel WHERE audit_rel_id=?',
+      [req.params.id]);
+    for (const row of allRowsForDQ) {
+      await generateDQ(db, req.params.id, appt.company_id, appt.fy_id, row);
+    }
 
+    // Same pattern for rotation alerts: clear the old open ones, re-raise below if still applicable
     await db.query(
       `DELETE FROM log_alert WHERE audit_rel_id=?
        AND alert_type IN ('rotation_overdue','rotation_due','rotation_approaching') AND status='open'`,
@@ -279,6 +343,7 @@ router.put('/:id', async (req, res) => {
     if (rot !== 'OK') {
       const [[co]] = await db.query('SELECT co_name FROM ma_company WHERE company_id=?', [appt.company_id]);
       const [[fm]] = await db.query('SELECT fr_name FROM ma_firm WHERE fr_reg_no=?', [appt.fr_reg_no]);
+      // INSERT: fresh rotation-limit alert for the just-saved tenure value
       if (co && fm) await db.query(`
         INSERT INTO log_alert
           (alert_type,company_id,firm_id,member_id,fy_id,audit_rel_id,tenure_years,regulatory_limit,alert_message)
@@ -292,7 +357,12 @@ router.put('/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /:id/status — mark Removed (cannot re-activate via this endpoint)
+// PATCH /api/appointments/:id/status — soft-delete one auditor: sets
+// record_status='Removed' (this is the only status this endpoint accepts —
+// there is no "un-remove" via this route). Called by the "Remove" button on
+// an individual auditor block inside the Edit modal; pass seq_no to target
+// just that one co-auditor, otherwise every seq_no under the audit_rel_id
+// is removed. Removed rows are excluded from GET / by default (see above).
 router.patch('/:id/status', async (req, res) => {
   try {
     const { record_status, seq_no } = req.body;
@@ -300,6 +370,7 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Only Removed is accepted via this endpoint' });
     const whereSeq = seq_no ? 'AND seq_no=?' : '';
     const seqParams = seq_no ? [seq_no] : [];
+    // UPDATE: flip record_status to Removed (soft delete, not a row DELETE)
     await db.query(
       `UPDATE fat_company_audit_rel SET record_status='Removed' WHERE audit_rel_id=? ${whereSeq}`,
       [req.params.id, ...seqParams]);
@@ -308,6 +379,9 @@ router.patch('/:id/status', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// DELETE /api/appointments/:id — permanently deletes the appointment row(s)
+// and anything referencing them (DQ issues, alerts). Unlike the PATCH
+// .../status "Remove" above, this is a hard delete with no way back.
 router.delete('/:id', async (req, res) => {
   try {
     await db.query(`DELETE FROM log_dq_issue WHERE audit_rel_id=?`, [req.params.id]);
@@ -318,6 +392,15 @@ router.delete('/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/appointments/import — bulk CSV import. Takes { rows: [...] }
+// (already parsed client-side from the uploaded CSV) and, for each row,
+// resolves company/firm/member by their human-readable keys (ISIN/reg
+// no./MRN), then either UPDATEs a matching existing appointment
+// (company+FY+firm+member+report_type already exists) or INSERTs a new
+// one. The frontend's chunked importer (see submitImport() in
+// frontend/index.html) calls this once per batch of ~500 rows rather than
+// sending the whole file in one request, so this handler only ever has to
+// process one batch at a time.
 router.post('/import', async (req, res) => {
   const { rows = [] } = req.body;
   if (!rows.length) return res.status(400).json({ error: 'No rows provided' });
@@ -383,6 +466,7 @@ router.post('/import', async (req, res) => {
         [company_id, fy_id, fr_reg_no, mem_no, rtype]);
 
       if (dup) {
+        // Row matches an existing appointment (same company+FY+firm+member+report_type) — UPDATE it in place
         await db.query(`
           UPDATE fat_company_audit_rel SET
             audit_opinion=?, signing_date=?, sebi_filing_date=?, tenure_years=?,
@@ -394,9 +478,12 @@ router.post('/import', async (req, res) => {
         await generateDQ(db, dup.audit_rel_id, company_id, fy_id, { signing_date, audit_opinion, tenure_years, record_status });
         updated++;
       } else {
+        // No match — figure out the audit_rel_id: append as the next co-auditor seq_no if this
+        // company+FY+report_type already has a report, otherwise mint a brand new audit_rel_id.
+        // report_type must be part of this match — see the same-named check in POST / above.
         const [[existing]] = await db.query(
           `SELECT audit_rel_id, MAX(seq_no) AS max_seq FROM fat_company_audit_rel
-           WHERE company_id=? AND fy_id=? GROUP BY audit_rel_id LIMIT 1`, [company_id, fy_id]);
+           WHERE company_id=? AND fy_id=? AND report_type=? GROUP BY audit_rel_id LIMIT 1`, [company_id, fy_id, rtype]);
         let audit_rel_id, seq_no;
         if (existing && existing.audit_rel_id) {
           audit_rel_id = existing.audit_rel_id;
@@ -405,6 +492,7 @@ router.post('/import', async (req, res) => {
           audit_rel_id = 'AR' + String(nextId++).padStart(6,'0');
           seq_no = 1;
         }
+        // INSERT: new appointment row for this CSV row
         await db.query(`
           INSERT INTO fat_company_audit_rel
             (audit_rel_id, seq_no, company_id, fy_id, fr_reg_no, mem_no,
@@ -424,6 +512,10 @@ router.post('/import', async (req, res) => {
   res.json({ inserted, updated, skipped, errors });
 });
 
+// Evaluates the same missing-field / rule-violation checks as computeDQ()
+// above, but as individual log_dq_issue rows (one INSERT per issue found)
+// instead of a single letter grade — these are what the Data Quality
+// screen lists and lets a user resolve/waive one at a time.
 async function generateDQ(db, audit_rel_id, company_id, fy_id, data) {
   const issues = [];
   if (!data.signing_date)  issues.push(['warning','missing','signing_date','Signing date not recorded']);

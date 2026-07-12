@@ -30,10 +30,16 @@ app.use(cors({
 }));
 
 app.use(cookieParser(process.env.COOKIE_SECRET));
-app.use(express.json());
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
+// Default express.json() body limit is 100kb — too small for bulk CSV import
+// payloads (hundreds of rows serialized as JSON easily exceeds that).
+app.use(express.json({ limit: '25mb' }));
+// Internal tool, not a public API — 300 req/15min was tuned for casual
+// browsing and is easily exceeded by legitimate bulk imports (which can
+// make several requests per row) combined with normal page activity in the
+// same window. Raised generously; chunked import (see /appointments/import)
+// keeps individual requests small regardless.
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 6000 }));
 
-// Routes
 app.use('/api/fy',           require('./routes/fy'));
 app.use('/api/sectors',      require('./routes/sectors'));
 app.use('/api/companies',    require('./routes/companies'));
@@ -45,7 +51,6 @@ app.use('/api/alerts',       require('./routes/alerts'));
 app.use('/api/analytics',    require('./routes/analytics'));
 app.use('/api/events',       require('./routes/events'));
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Internal server error', detail: err.message });
